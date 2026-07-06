@@ -1,0 +1,20 @@
+[package]
+name = "agent-hub"
+version = "0.1.0"
+edition = "2021"
+description = "统一管理 Claude Code / MiMo Code / Kimi Code 的 CLI 工具"
+
+[[bin]]
+name = "ah"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+toml = "0.8"
+dirs = "5"
+colored = "2"
+anyhow = "1"

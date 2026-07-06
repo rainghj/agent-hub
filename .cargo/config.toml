@@ -1,0 +1,5 @@
+[target.x86_64-pc-windows-gnu]
+linker = "C:\\Users\\Administrator\\.mingw64\\mingw64\\bin\\gcc.exe"
+
+[net]
+git-fetch-with-cli = true

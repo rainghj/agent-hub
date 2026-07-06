@@ -1,0 +1,40 @@
+{
+  "build": {
+    "distDir": "../src",
+    "devPath": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "package": {
+    "productName": "Agent Hub",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "com.agent-hub.app",
+      "icon": []
+    },
+    "windows": [
+      {
+        "title": "Agent Hub",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "allowlist": {
+      "shell": {
+        "all": true,
+        "execute": true,
+        "sidecar": true,
+        "open": true
+      }
+    }
+  }
+}
