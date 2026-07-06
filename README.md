@@ -1,94 +1,88 @@
-# Agent Hub (ah)
+# Agent Hub
 
-统一管理 Claude Code / MiMo Code / Kimi Code 的 CLI 工具。
+统一管理 Claude Code / MiMo Code / Kimi Code 的桌面应用。
+
+## 功能
+
+- 三栏布局界面（类似 VSCode/Claude Code）
+- 左侧：项目列表 + 会话列表（按 agent 分组）
+- 中间：对话内容 / PTY 终端
+- 右侧：会话信息
+- 支持 Claude Code / MiMo Code / Kimi Code
+- Agent 筛选按钮
+- 搜索会话
+- 打开终端恢复会话
 
 ## 安装
 
+### 前置要求
+
+- Rust 1.70+
+- Node.js 18+
+- MinGW-w64（Windows）
+
+### 开发模式
+
 ```powershell
 # 克隆项目
-git clone <repo-url> C:\code\agent-hub
-cd C:\code\agent-hub
+git clone https://github.com/rainghj/agent-hub.git
+cd agent-hub
 
-# 编译
+# 安装前端依赖
+npm install
+
+# 启动开发模式
+# 方式1: 双击 dev.bat
+# 方式2: 命令行
 $env:PATH = "C:\Users\Administrator\.mingw64\mingw64\bin;" + $env:PATH
-cargo build --release --target x86_64-pc-windows-gnu
-
-# 添加到 PATH（仅需执行一次）
-$ahPath = "C:\code\agent-hub\target\x86_64-pc-windows-gnu\release"
-$currentPath = [System.Environment]::GetEnvironmentVariable("PATH", "User")
-[System.Environment]::SetEnvironmentVariable("PATH", "$ahPath;$currentPath", "User")
+npx tauri dev
 ```
 
-## 使用
+### 打包生产版本
 
 ```powershell
-# 查看所有 agent 状态
-ah status
-
-# 查看历史会话
-ah history
-ah history --agent claude
-ah history --project code
-ah history --search "关键词"
-
-# 查看会话详情
-ah show <session-id>
-
-# 跨 agent 搜索
-ah search "关键词"
-
-# 统一记忆管理
-ah memory list
-ah memory search "关键词"
-ah memory add "内容"
-ah memory sync
+# 双击 build.bat 或运行
+npx tauri build
 ```
 
-## 命令说明
+生成的安装包在 `src-tauri\target\release\bundle\` 目录下。
 
-| 命令 | 说明 |
-|------|------|
-| `ah status` | 显示所有 agent 的活跃会话状态表格 |
-| `ah history` | 列出历史会话，支持按 agent、项目、关键词过滤 |
-| `ah show <id>` | 显示指定会话的完整对话内容 |
-| `ah search <query>` | 跨所有 agent 全文搜索 |
-| `ah memory list` | 列出统一记忆库中的所有记忆 |
-| `ah memory search` | 在记忆库中搜索 |
-| `ah memory add` | 添加新记忆（所有 agent 可见） |
-| `ah memory sync` | 从各 agent 导入记忆到统一库 |
+## 项目结构
+
+```
+agent-hub/
+├── src/                    # React 前端
+│   ├── App.tsx            # 主应用
+│   ├── components/        # UI 组件
+│   │   ├── Sidebar.tsx    # 左侧栏
+│   │   ├── ChatView.tsx   # 中间对话/终端
+│   │   ├── ProjectInfo.tsx # 右侧信息
+│   │   └── EmbeddedTerminal.tsx # PTY 终端
+│   └── agents/            # Agent 数据解析器
+├── src-tauri/              # Rust 后端 (Tauri)
+│   └── src/
+│       ├── main.rs        # Tauri 入口
+│       ├── commands.rs    # Tauri 命令
+│       └── agents/        # Agent 数据解析器
+├── dev.bat                 # 开发启动脚本
+├── build.bat              # 打包脚本
+└── package.json           # 前端依赖
+```
 
 ## 支持的 Agent
 
-| Agent | 数据目录 | 数据格式 |
+| Agent | 数据目录 | 恢复命令 |
 |-------|----------|----------|
-| Claude Code | `~/.claude/` | JSONL + JSON |
-| MiMo Code | `~/.local/share/mimocode/` | SQLite + Markdown |
-| Kimi Code | `~/.kimi-code/` | JSONL + JSON |
+| Claude Code | `~/.claude/` | `claude --resume <id>` |
+| MiMo Code | `~/.local/share/mimocode/` | `mimo --session <id>` |
+| Kimi Code | `~/.kimi-code/` | `kimi --session <id>` |
 
-## 统一记忆系统
+## 技术栈
 
-记忆存储在 `~/.agent-hub/memory.db` (SQLite)，支持：
-- 从各 agent 同步记忆
-- 全文搜索（FTS5）
-- 跨 agent 记忆共享
-
-## 开发
-
-```powershell
-# 调试构建
-cargo build
-
-# 运行测试
-cargo test
-
-# 代码检查
-cargo clippy
-```
-
-## 依赖
-
-- Rust 1.70+
-- MinGW-w64（用于 GNU 工具链编译）
+- **后端**: Rust + Tauri 1.x
+- **前端**: React 18 + TypeScript + Vite
+- **终端**: xterm.js + portable-pty
+- **数据**: SQLite (rusqlite)
 
 ## 许可证
 
