@@ -14,11 +14,13 @@ fn main() {
             commands::get_sessions,
             commands::get_messages,
             commands::spawn_terminal,
+            commands::spawn_shell,
             commands::send_to_terminal,
             commands::resize_terminal,
             commands::close_terminal,
             commands::open_in_terminal,
             commands::search_sessions,
+            commands::list_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

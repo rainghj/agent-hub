@@ -1,6 +1,6 @@
 {
   "build": {
-    "distDir": "../src",
+    "distDir": "../dist",
     "devPath": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
@@ -14,7 +14,7 @@
       "active": true,
       "targets": "all",
       "identifier": "com.agent-hub.app",
-      "icon": []
+      "icon": ["icons/icon.ico"]
     },
     "windows": [
       {

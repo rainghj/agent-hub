@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
-import ChatView from './components/ChatView'
-import ProjectInfo from './components/ProjectInfo'
+import TerminalTabs from './components/TerminalTabs'
+import FilePanel from './components/FilePanel'
 import './App.css'
 
 // 检查是否在 Tauri 环境中
@@ -82,14 +82,14 @@ const mockSessions: Session[] = [
   },
 ]
 
-interface Project {
+export interface Project {
   name: string
   agent: string
   path?: string
   session_count: number
 }
 
-interface Session {
+export interface Session {
   agent: string
   session_id: string
   title?: string
@@ -100,113 +100,114 @@ interface Session {
   message_count?: number
 }
 
-interface Message {
-  role: string
-  content: string
-  timestamp?: string
+export interface TerminalTab {
+  id: string
+  type: 'shell' | 'session'
+  title: string
+  agent?: string
+  sessionId?: string
+  projectPath: string
 }
 
 function App() {
-  const [projects] = useState<Project[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
-  const [selectedSession, setSelectedSession] = useState<Session | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
+  const [tabs, setTabs] = useState<TerminalTab[]>([])
+  const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadData()
   }, [])
 
-  useEffect(() => {
-    if (selectedProject || selectedSession) {
-      loadSessions()
-    }
-  }, [selectedProject, selectedSession])
-
-  useEffect(() => {
-    if (selectedSession) {
-      loadMessages()
-    }
-  }, [selectedSession])
-
   const loadData = async () => {
     try {
       setLoading(true)
 
       if (isTauri) {
-        // Tauri 环境：调用后端 API
         const { invoke } = await import('@tauri-apps/api/tauri')
-        const projectsData = await invoke<Project[]>('get_projects')
-        setProjects(projectsData)
-
         const sessionsData = await invoke<Session[]>('get_sessions', {})
         setSessions(sessionsData)
-
-        if (sessionsData.length > 0) {
-          setSelectedSession(sessionsData[0])
-        }
       } else {
-        // 浏览器环境：使用模拟数据
         setSessions(mockSessions)
-        if (mockSessions.length > 0) {
-          setSelectedSession(mockSessions[0])
-        }
       }
     } catch (err) {
       console.error('Error loading data:', err)
-      // 使用模拟数据作为后备
       setSessions(mockSessions)
-      if (mockSessions.length > 0) {
-        setSelectedSession(mockSessions[0])
-      }
     } finally {
       setLoading(false)
     }
   }
 
-  const loadSessions = async () => {
-    try {
-      if (isTauri) {
-        const { invoke } = await import('@tauri-apps/api/tauri')
-        const sessionsData = await invoke<Session[]>('get_sessions', {
-          project: selectedProject,
-          agent: selectedSession?.agent
-        })
-        setSessions(sessionsData)
-      }
-    } catch (err) {
-      console.error('Error loading sessions:', err)
+  const selectProject = useCallback((path: string | null) => {
+    setSelectedProject(path)
+  }, [])
+
+  const generateTabId = (type: 'shell' | 'session', identifier: string) => {
+    return `${type}:${identifier}:${Date.now()}`
+  }
+
+  const openShellTab = useCallback((projectPath: string) => {
+    const existingTab = tabs.find(
+      (t) => t.type === 'shell' && t.projectPath === projectPath
+    )
+    if (existingTab) {
+      setActiveTabId(existingTab.id)
+      return
     }
-  }
 
-  const loadMessages = async () => {
-    if (!selectedSession) return
-
-    try {
-      if (isTauri) {
-        const { invoke } = await import('@tauri-apps/api/tauri')
-        const messagesData = await invoke<Message[]>('get_messages', {
-          sessionId: selectedSession.session_id,
-          agent: selectedSession.agent
-        })
-        setMessages(messagesData)
-      } else {
-        // 浏览器环境：模拟消息
-        setMessages([
-          { role: 'user', content: selectedSession.title || '测试消息' },
-          { role: 'assistant', content: '这是模拟的回复内容。在 Tauri 环境中，这里会显示真实的会话内容。' }
-        ])
-      }
-    } catch (err) {
-      console.error('Error loading messages:', err)
+    const id = generateTabId('shell', projectPath)
+    const title = `Shell - ${projectPath.split('\\').pop() || projectPath.split('/').pop() || projectPath}`
+    const newTab: TerminalTab = {
+      id,
+      type: 'shell',
+      title,
+      projectPath,
     }
-  }
+    setTabs((prev) => [...prev, newTab])
+    setActiveTabId(id)
+  }, [tabs])
 
-  const handleSessionSelect = (session: Session) => {
-    setSelectedSession(session)
-    setSelectedProject(session.project || null)
-  }
+  const openSessionTab = useCallback((session: Session) => {
+    const existingTab = tabs.find(
+      (t) => t.type === 'session' && t.sessionId === session.session_id && t.agent === session.agent
+    )
+    if (existingTab) {
+      setActiveTabId(existingTab.id)
+      return
+    }
+
+    const id = generateTabId('session', session.session_id)
+    const title = session.title || session.session_id.slice(0, 12)
+    const newTab: TerminalTab = {
+      id,
+      type: 'session',
+      title,
+      agent: session.agent,
+      sessionId: session.session_id,
+      projectPath: session.project || selectedProject || 'C:\\Users\\admin',
+    }
+    setTabs((prev) => [...prev, newTab])
+    setActiveTabId(id)
+  }, [tabs, selectedProject])
+
+  const closeTab = useCallback((tabId: string) => {
+    setTabs((prev) => {
+      const index = prev.findIndex((t) => t.id === tabId)
+      const next = prev.filter((t) => t.id !== tabId)
+
+      if (activeTabId === tabId) {
+        const nextActive = next[index]?.id ?? next[index - 1]?.id ?? next[0]?.id ?? null
+        setActiveTabId(nextActive)
+      }
+
+      return next
+    })
+  }, [activeTabId])
+
+  const selectTab = useCallback((tabId: string) => {
+    setActiveTabId(tabId)
+  }, [])
 
   if (loading) {
     return <div className="loading">加载中...</div>
@@ -215,18 +216,20 @@ function App() {
   return (
     <div className="app">
       <Sidebar
-        projects={projects}
         sessions={sessions}
-        selectedSession={selectedSession}
-        onSelectSession={handleSessionSelect}
-        onSelectProject={setSelectedProject}
+        selectedProject={selectedProject}
+        onSelectProject={selectProject}
+        onOpenShell={openShellTab}
+        onOpenSession={openSessionTab}
       />
-      <ChatView
-        session={selectedSession}
-        messages={messages}
+      <TerminalTabs
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={selectTab}
+        onCloseTab={closeTab}
       />
-      <ProjectInfo
-        session={selectedSession}
+      <FilePanel
+        projectPath={selectedProject}
       />
     </div>
   )

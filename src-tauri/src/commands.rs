@@ -12,6 +12,7 @@ pub struct TerminalState {
 }
 
 pub struct PtySession {
+    pub master: Box<dyn portable_pty::MasterPty + Send>,
     pub writer: Box<dyn Write + Send>,
     pub child: Box<dyn portable_pty::Child + Send>,
 }
@@ -93,6 +94,7 @@ pub fn get_messages(session_id: String, agent: String) -> Result<Vec<Message>, S
 pub fn spawn_terminal(
     agent: String,
     session_id: String,
+    project_path: Option<String>,
     cols: u16,
     rows: u16,
     window: Window,
@@ -146,20 +148,31 @@ pub fn spawn_terminal(
         _ => {}
     }
 
+    // 设置工作目录，让 agent 进入正确的项目目录
+    if let Some(path) = &project_path {
+        cmd.cwd(path);
+    }
+
+    // 启用 ANSI 颜色输出
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("CLICOLOR", "1");
+    cmd.env("FORCE_COLOR", "1");
+
     // 启动子进程
     let child = pair
         .slave
         .spawn_command(cmd)
         .map_err(|e| format!("Failed to spawn command: {}", e))?;
+    drop(pair.slave);
 
-    // 获取 writer
-    let mut writer = pair.master.take_writer().map_err(|e| e.to_string())?;
-
-    // 获取 reader 用于流式传输输出
-    let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
+    // 获取 master、writer 和 reader
+    let master = pair.master;
+    let writer = master.take_writer().map_err(|e| e.to_string())?;
+    let mut reader = master.try_clone_reader().map_err(|e| e.to_string())?;
 
     // 在新线程中读取 PTY 输出并发送到前端
     let window_clone = window.clone();
+    let terminal_id_clone = terminal_id.clone();
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
         loop {
@@ -167,7 +180,13 @@ pub fn spawn_terminal(
                 Ok(0) => break, // EOF
                 Ok(n) => {
                     let output = String::from_utf8_lossy(&buf[..n]).to_string();
-                    let _ = window_clone.emit("terminal-output", output);
+                    let _ = window_clone.emit(
+                        "terminal-output",
+                        serde_json::json!({
+                            "terminal_id": terminal_id_clone,
+                            "data": output,
+                        }),
+                    );
                 }
                 Err(_) => break,
             }
@@ -179,7 +198,7 @@ pub fn spawn_terminal(
         let mut terminals = state.terminals.lock().map_err(|e| e.to_string())?;
         terminals.insert(
             terminal_id.clone(),
-            PtySession { writer, child },
+            PtySession { master, writer, child },
         );
     }
 
@@ -206,14 +225,22 @@ pub fn send_to_terminal(
 #[tauri::command]
 pub fn resize_terminal(
     terminal_id: String,
-    _cols: u16,
-    _rows: u16,
+    cols: u16,
+    rows: u16,
     state: State<'_, TerminalState>,
 ) -> Result<(), String> {
-    let terminals = state.terminals.lock().map_err(|e| e.to_string())?;
+    let mut terminals = state.terminals.lock().map_err(|e| e.to_string())?;
 
-    if let Some(_session) = terminals.get(&terminal_id) {
-        // resize 需要通过 master pty 设置，这里简化处理
+    if let Some(session) = terminals.get_mut(&terminal_id) {
+        session
+            .master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| e.to_string())?;
         return Ok(());
     }
 
@@ -232,6 +259,122 @@ pub fn close_terminal(
     }
 
     Ok(())
+}
+
+/// 目录条目
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DirEntry {
+    pub name: String,
+    pub is_dir: bool,
+    pub size: u64,
+}
+
+#[tauri::command]
+pub fn list_directory(path: String) -> Result<Vec<DirEntry>, String> {
+    let mut entries = Vec::new();
+    for entry in std::fs::read_dir(&path).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let metadata = entry.metadata().map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name == "." || name == ".." {
+            continue;
+        }
+        entries.push(DirEntry {
+            name,
+            is_dir: metadata.is_dir(),
+            size: metadata.len(),
+        });
+    }
+    // 文件夹在前，文件在后；同类型按名称排序
+    entries.sort_by(|a, b| {
+        match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        }
+    });
+    Ok(entries)
+}
+
+#[tauri::command]
+pub fn spawn_shell(
+    shell_id: String,
+    project_path: String,
+    cols: u16,
+    rows: u16,
+    window: Window,
+    state: State<'_, TerminalState>,
+) -> Result<String, String> {
+    // 检查是否已经在运行
+    {
+        let terminals = state.terminals.lock().map_err(|e| e.to_string())?;
+        if terminals.contains_key(&shell_id) {
+            return Ok(shell_id);
+        }
+    }
+
+    let pty_system = NativePtySystem::default();
+    let pair = pty_system
+        .openpty(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|e| format!("Failed to open PTY: {}", e))?;
+
+    // 使用系统默认 shell
+    #[cfg(target_os = "windows")]
+    let mut cmd = CommandBuilder::new("powershell.exe");
+    #[cfg(not(target_os = "windows"))]
+    let mut cmd = CommandBuilder::new("/bin/sh");
+
+    cmd.cwd(&project_path);
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("CLICOLOR", "1");
+    cmd.env("FORCE_COLOR", "1");
+
+    let child = pair
+        .slave
+        .spawn_command(cmd)
+        .map_err(|e| format!("Failed to spawn command: {}", e))?;
+    drop(pair.slave);
+
+    let master = pair.master;
+    let writer = master.take_writer().map_err(|e| e.to_string())?;
+    let mut reader = master.try_clone_reader().map_err(|e| e.to_string())?;
+
+    let window_clone = window.clone();
+    let shell_id_clone = shell_id.clone();
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 4096];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let output = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let _ = window_clone.emit(
+                        "terminal-output",
+                        serde_json::json!({
+                            "terminal_id": shell_id_clone,
+                            "data": output,
+                        }),
+                    );
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    {
+        let mut terminals = state.terminals.lock().map_err(|e| e.to_string())?;
+        terminals.insert(
+            shell_id.clone(),
+            PtySession { master, writer, child },
+        );
+    }
+
+    Ok(shell_id)
 }
 
 #[tauri::command]
