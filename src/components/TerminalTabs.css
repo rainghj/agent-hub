@@ -2,7 +2,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  background-color: #1e1e1e;
+  background-color: #18181b;
   overflow: hidden;
   min-width: 0;
 }
@@ -12,8 +12,8 @@
   align-items: flex-end;
   gap: 2px;
   padding: 4px 4px 0 4px;
-  background-color: #252525;
-  border-bottom: 1px solid #333;
+  background-color: #202023;
+  border-bottom: 1px solid #27272a;
   overflow-x: auto;
   overflow-y: hidden;
   flex-shrink: 0;
@@ -24,25 +24,25 @@
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  background-color: #1a1a1a;
+  background-color: #18181b;
   border-radius: 4px 4px 0 0;
-  color: #888;
+  color: #71717a;
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
-  transition: background-color 0.15s, color 0.15s;
+  transition: background-color 0.1s, color 0.1s;
   max-width: 180px;
 }
 
 .terminal-tab:hover {
-  background-color: #2a2a2a;
-  color: #ccc;
+  background-color: #27272a;
+  color: #a1a1aa;
 }
 
 .terminal-tab.active {
-  background-color: #0d1117;
-  color: #fff;
+  background-color: #18181b;
+  color: #e4e4e7;
 }
 
 .terminal-tab-icon {
@@ -51,8 +51,19 @@
 
 .terminal-tab-title {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.terminal-tab-dirty {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #e3b341;
+  flex-shrink: 0;
 }
 
 .terminal-tab-close {
@@ -64,16 +75,41 @@
   padding: 0;
   background: none;
   border: none;
-  color: #666;
+  color: #52525b;
   font-size: 10px;
   cursor: pointer;
   border-radius: 3px;
-  transition: background-color 0.15s, color 0.15s;
+  transition: background-color 0.1s, color 0.1s;
 }
 
 .terminal-tab-close:hover {
-  background-color: #ff5f57;
-  color: #fff;
+  background-color: #3f3f46;
+  color: #d4d4d8;
+}
+
+.terminal-tab-new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  margin-right: 4px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #71717a;
+  font-size: 18px;
+  font-weight: 300;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.1s, color 0.1s;
+  flex-shrink: 0;
+}
+
+.terminal-tab-new:hover {
+  background-color: #27272a;
+  color: #d4d4d8;
 }
 
 .terminal-tabs-content {
@@ -103,7 +139,7 @@
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  color: #666;
+  color: #52525b;
   gap: 16px;
 }
 

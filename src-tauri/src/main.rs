@@ -21,6 +21,8 @@ fn main() {
             commands::open_in_terminal,
             commands::search_sessions,
             commands::list_directory,
+            commands::read_file,
+            commands::write_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

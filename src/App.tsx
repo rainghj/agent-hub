@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import TerminalTabs from './components/TerminalTabs'
 import FilePanel from './components/FilePanel'
+import ConfirmDialog from './components/ConfirmDialog'
 import './App.css'
 
 // 检查是否在 Tauri 环境中
@@ -102,11 +103,13 @@ export interface Session {
 
 export interface TerminalTab {
   id: string
-  type: 'shell' | 'session'
+  type: 'shell' | 'session' | 'file'
   title: string
   agent?: string
   sessionId?: string
   projectPath: string
+  filePath?: string
+  isDirty?: boolean
 }
 
 function App() {
@@ -115,6 +118,14 @@ function App() {
   const [tabs, setTabs] = useState<TerminalTab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  // 记录文件标签页的当前编辑内容，用于关闭时保存
+  const [fileContents, setFileContents] = useState<Record<string, string>>({})
+  // 关闭未保存文件时的确认弹窗状态
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean
+    tabId: string | null
+    fileName: string
+  }>({ isOpen: false, tabId: null, fileName: '' })
 
   useEffect(() => {
     loadData()
@@ -143,7 +154,7 @@ function App() {
     setSelectedProject(path)
   }, [])
 
-  const generateTabId = (type: 'shell' | 'session', identifier: string) => {
+  const generateTabId = (type: 'shell' | 'session' | 'file', identifier: string) => {
     return `${type}:${identifier}:${Date.now()}`
   }
 
@@ -191,7 +202,29 @@ function App() {
     setActiveTabId(id)
   }, [tabs, selectedProject])
 
-  const closeTab = useCallback((tabId: string) => {
+  const openFileTab = useCallback((filePath: string) => {
+    const existingTab = tabs.find(
+      (t) => t.type === 'file' && t.filePath === filePath
+    )
+    if (existingTab) {
+      setActiveTabId(existingTab.id)
+      return
+    }
+
+    const id = generateTabId('file', filePath)
+    const title = filePath.split('\\').pop() || filePath.split('/').pop() || filePath
+    const newTab: TerminalTab = {
+      id,
+      type: 'file',
+      title,
+      projectPath: selectedProject || '',
+      filePath,
+    }
+    setTabs((prev) => [...prev, newTab])
+    setActiveTabId(id)
+  }, [tabs, selectedProject])
+
+  const doCloseTab = useCallback((tabId: string) => {
     setTabs((prev) => {
       const index = prev.findIndex((t) => t.id === tabId)
       const next = prev.filter((t) => t.id !== tabId)
@@ -203,10 +236,76 @@ function App() {
 
       return next
     })
+    // 清理对应文件内容缓存
+    setFileContents((prev) => {
+      const next = { ...prev }
+      delete next[tabId]
+      return next
+    })
   }, [activeTabId])
+
+  const closeTab = useCallback((tabId: string) => {
+    const tab = tabs.find((t) => t.id === tabId)
+    if (!tab) return
+
+    // 文件标签页且有未保存修改，弹出三按钮确认框
+    if (tab.type === 'file' && tab.isDirty) {
+      setConfirmDialog({
+        isOpen: true,
+        tabId,
+        fileName: tab.title,
+      })
+      return
+    }
+
+    doCloseTab(tabId)
+  }, [tabs])
+
+  const handleConfirmSave = useCallback(async () => {
+    const { tabId } = confirmDialog
+    if (!tabId) return
+
+    const tab = tabs.find((t) => t.id === tabId)
+    if (tab?.type === 'file' && tab.filePath) {
+      const content = fileContents[tabId]
+      if (content !== undefined) {
+        try {
+          if (isTauri) {
+            const { invoke } = await import('@tauri-apps/api/tauri')
+            await invoke('write_file', { path: tab.filePath, content })
+          }
+        } catch (err) {
+          console.error('Failed to save file:', err)
+          return
+        }
+      }
+    }
+
+    setConfirmDialog({ isOpen: false, tabId: null, fileName: '' })
+    doCloseTab(tabId)
+  }, [confirmDialog, tabs, fileContents])
+
+  const handleConfirmDiscard = useCallback(() => {
+    const { tabId } = confirmDialog
+    if (!tabId) return
+
+    setConfirmDialog({ isOpen: false, tabId: null, fileName: '' })
+    doCloseTab(tabId)
+  }, [confirmDialog])
+
+  const handleConfirmCancel = useCallback(() => {
+    setConfirmDialog({ isOpen: false, tabId: null, fileName: '' })
+  }, [])
 
   const selectTab = useCallback((tabId: string) => {
     setActiveTabId(tabId)
+  }, [])
+
+  const handleFileDirtyChange = useCallback((tabId: string, isDirty: boolean, content: string) => {
+    setTabs((prev) =>
+      prev.map((t) => (t.id === tabId ? { ...t, isDirty } : t))
+    )
+    setFileContents((prev) => ({ ...prev, [tabId]: content }))
   }, [])
 
   if (loading) {
@@ -227,9 +326,26 @@ function App() {
         activeTabId={activeTabId}
         onSelectTab={selectTab}
         onCloseTab={closeTab}
+        onSetTabDirty={handleFileDirtyChange}
+        onNewShell={() => {
+          const projectPath = selectedProject || 'C:\\CODE\\AICode\\agent-hub'
+          openShellTab(projectPath)
+        }}
       />
       <FilePanel
         projectPath={selectedProject}
+        onOpenFile={openFileTab}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title="未保存的修改"
+        message={`「${confirmDialog.fileName}」有未保存的修改，是否保存？`}
+        buttons={[
+          { label: '保存', variant: 'primary', onClick: handleConfirmSave },
+          { label: '不保存', variant: 'danger', onClick: handleConfirmDiscard },
+          { label: '取消', variant: 'secondary', onClick: handleConfirmCancel },
+        ]}
       />
     </div>
   )

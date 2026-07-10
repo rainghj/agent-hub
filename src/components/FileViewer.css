@@ -1,0 +1,127 @@
+.file-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #18181b;
+  color: #d4d4d8;
+  overflow: hidden;
+  position: relative;
+}
+
+.file-viewer-saving-indicator {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 10;
+  padding: 2px 8px;
+  background-color: #27272a;
+  color: #a1a1aa;
+  border-radius: 4px;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.file-viewer-content {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.file-viewer-loading,
+.file-viewer-error {
+  padding: 16px;
+  font-size: 13px;
+}
+
+.file-viewer-error {
+  color: #f87171;
+}
+
+/* react-simple-code-editor 容器 */
+.file-viewer-editor {
+  min-height: 100% !important;
+  background-color: #18181b !important;
+  font-family: "Zed Mono", "JetBrains Mono", "Fira Code", Consolas, "Cascadia Code", "Courier New", monospace !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+}
+
+.file-viewer-editor textarea,
+.file-viewer-editor pre {
+  margin: 0 !important;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  color: #d4d4d8 !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+  tab-size: 2 !important;
+  white-space: pre !important;
+  word-wrap: normal !important;
+  overflow-wrap: normal !important;
+}
+
+.file-viewer-editor textarea {
+  caret-color: #60a5fa;
+}
+
+.file-viewer-editor textarea::selection {
+  background-color: #2563eb66;
+}
+
+/* Zed 风格语法高亮 */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #71717a;
+  font-style: italic;
+}
+
+.token.punctuation {
+  color: #a1a1aa;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol {
+  color: #f472b6;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: #a3e635;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  color: #c084fc;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #60a5fa;
+}
+
+.token.function,
+.token.class-name {
+  color: #facc15;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  color: #fb923c;
+}

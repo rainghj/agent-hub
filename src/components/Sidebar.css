@@ -1,8 +1,8 @@
 .sidebar {
   width: 280px;
   min-width: 280px;
-  background-color: #1a1a1a;
-  border-right: 1px solid #333;
+  background-color: #18181b;
+  border-right: 1px solid #27272a;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -10,7 +10,7 @@
 
 .sidebar-header {
   padding: 16px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid #27272a;
 }
 
 .sidebar-title {
@@ -21,30 +21,30 @@
 }
 
 .sidebar-title h2 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  color: #fff;
+  color: #d4d4d8;
   margin: 0;
 }
 
 .search-input {
   width: 100%;
   padding: 8px 12px;
-  background-color: #2a2a2a;
-  border: 1px solid #444;
+  background-color: #27272a;
+  border: 1px solid #3f3f46;
   border-radius: 6px;
-  color: #fff;
+  color: #d4d4d8;
   font-size: 13px;
   outline: none;
   transition: border-color 0.15s;
 }
 
 .search-input:focus {
-  border-color: #0066cc;
+  border-color: #2563eb;
 }
 
 .search-input::placeholder {
-  color: #888;
+  color: #71717a;
 }
 
 .project-list {
@@ -67,11 +67,11 @@
 }
 
 .project-item:hover {
-  background-color: #2a2a2a;
+  background-color: #27272a;
 }
 
 .project-item.active {
-  background-color: #0066cc22;
+  background-color: #27272a;
 }
 
 .project-icon {
@@ -82,7 +82,7 @@
 .project-name {
   flex: 1;
   font-size: 13px;
-  color: #fff;
+  color: #d4d4d8;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -90,9 +90,9 @@
 
 .session-count {
   font-size: 11px;
-  color: #888;
-  background-color: #333;
-  padding: 2px 6px;
+  color: #71717a;
+  background-color: #27272a;
+  padding: 1px 6px;
   border-radius: 10px;
   margin-left: 8px;
 }
@@ -111,21 +111,21 @@
 }
 
 .session-item:hover {
-  background-color: #2a2a2a;
+  background-color: #27272a;
 }
 
 .session-item.active {
-  background-color: #0066cc33;
+  background-color: #27272a;
 }
 
 .session-item.new-shell {
-  color: #888;
+  color: #71717a;
   font-style: italic;
 }
 
 .session-item.new-shell:hover {
-  background-color: #2a2a2a;
-  color: #fff;
+  background-color: #27272a;
+  color: #d4d4d8;
 }
 
 .session-icon {
@@ -136,7 +136,7 @@
 .session-title {
   flex: 1;
   font-size: 12px;
-  color: #ccc;
+  color: #a1a1aa;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -144,7 +144,7 @@
 
 .session-time {
   font-size: 11px;
-  color: #666;
+  color: #52525b;
   margin-left: 8px;
   white-space: nowrap;
 }
