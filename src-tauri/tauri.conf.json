@@ -18,11 +18,13 @@
     },
     "windows": [
       {
+        "label": "main",
         "title": "Agent Hub",
         "width": 1200,
         "height": 800,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "visible": false
       }
     ],
     "security": {
@@ -34,6 +36,11 @@
         "execute": true,
         "sidecar": true,
         "open": true
+      },
+      "window": {
+        "all": true,
+        "show": true,
+        "hide": true
       }
     }
   }
