@@ -9,6 +9,8 @@ interface SidebarProps {
   onSelectProject: (project: string | null) => void
   onOpenShell: (projectPath: string) => void
   onOpenSession: (session: Session) => void
+  expandedProjects: Set<string>
+  onExpandedProjectsChange: (expanded: Set<string>) => void
 }
 
 interface ProjectGroup {
@@ -23,9 +25,10 @@ function Sidebar({
   onSelectProject,
   onOpenShell,
   onOpenSession,
+  expandedProjects,
+  onExpandedProjectsChange,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('')
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
   const { profileById } = useAgentProfiles()
 
   const toggleProject = (projectPath: string) => {
@@ -35,7 +38,7 @@ function Sidebar({
     } else {
       newExpanded.add(projectPath)
     }
-    setExpandedProjects(newExpanded)
+    onExpandedProjectsChange(newExpanded)
   }
 
   const filteredSessions = sessions.filter((session) => {

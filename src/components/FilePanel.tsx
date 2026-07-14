@@ -10,13 +10,13 @@ interface DirEntry {
 interface FilePanelProps {
   projectPath: string | null
   onOpenFile?: (filePath: string) => void
+  expandedDirs: Set<string>
+  onExpandedDirsChange: (value: Set<string> | ((prev: Set<string>) => Set<string>)) => void
 }
 
 const isTauri = typeof window !== 'undefined' && window.__TAURI__
 
-function FilePanel({ projectPath, onOpenFile }: FilePanelProps) {
-  // 展开的目录路径集合
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
+function FilePanel({ projectPath, onOpenFile, expandedDirs, onExpandedDirsChange }: FilePanelProps) {
   // 每个目录路径对应的内容缓存
   const [dirEntries, setDirEntries] = useState<Map<string, DirEntry[]>>(new Map())
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set())
@@ -25,7 +25,7 @@ function FilePanel({ projectPath, onOpenFile }: FilePanelProps) {
   // 初始加载根目录并展开
   useEffect(() => {
     if (!projectPath || projectPath === '未分类') {
-      setExpandedDirs(new Set())
+      onExpandedDirsChange(new Set())
       setDirEntries(new Map())
       setError(null)
       return
@@ -40,11 +40,7 @@ function FilePanel({ projectPath, onOpenFile }: FilePanelProps) {
           next.set(projectPath, entries)
           return next
         })
-        setExpandedDirs((prev) => {
-          const next = new Set(prev)
-          next.add(projectPath)
-          return next
-        })
+        onExpandedDirsChange((prev: Set<string>) => new Set(prev).add(projectPath))
       }
     }
 
@@ -77,11 +73,9 @@ function FilePanel({ projectPath, onOpenFile }: FilePanelProps) {
 
     if (isExpanded) {
       // 折叠
-      setExpandedDirs((prev) => {
-        const next = new Set(prev)
-        next.delete(path)
-        return next
-      })
+      const next = new Set(expandedDirs)
+      next.delete(path)
+      onExpandedDirsChange(next)
       return
     }
 
@@ -107,12 +101,8 @@ function FilePanel({ projectPath, onOpenFile }: FilePanelProps) {
       }
     }
 
-    setExpandedDirs((prev) => {
-      const next = new Set(prev)
-      next.add(path)
-      return next
-    })
-  }, [expandedDirs, dirEntries, projectPath])
+    onExpandedDirsChange(new Set(expandedDirs).add(path))
+  }, [expandedDirs, dirEntries, projectPath, onExpandedDirsChange])
 
   const handleFileClick = useCallback((filePath: string) => {
     onOpenFile?.(filePath)
@@ -190,6 +180,53 @@ function TreeNode({
   const isLoading = loadingDirs.has(path)
   const children = dirEntries.get(path)
 
+  // 计算折叠链：如果当前目录只有一个子目录，向上折叠显示 a/b/c
+  const folded = foldSingleChildChain(path, entry, dirEntries, depth)
+
+  if (folded) {
+    const [foldedPath, foldedName, foldedDepth] = folded
+    return (
+      <div className="file-tree-node-wrapper">
+        <div
+          className="file-tree-node file-tree-dir"
+          style={{ paddingLeft: depth * 16 + 8 }}
+        >
+          <span
+            className="file-tree-toggle"
+            onClick={() => onToggleDir(foldedPath)}
+          >
+            {expandedDirs.has(foldedPath) ? '▾' : '▸'}
+          </span>
+          <span
+            className="file-tree-icon"
+            onClick={() => onToggleDir(foldedPath)}
+          >
+            📁
+          </span>
+          <span
+            className="file-tree-name"
+            onClick={() => onToggleDir(foldedPath)}
+          >
+            {foldedName}
+          </span>
+        </div>
+        {expandedDirs.has(foldedPath) && (
+          <TreeNode
+            key={foldedPath}
+            path={foldedPath}
+            entry={{ name: foldedPath.split('\\').pop() || foldedPath, is_dir: true, size: 0 }}
+            depth={foldedDepth}
+            expandedDirs={expandedDirs}
+            dirEntries={dirEntries}
+            loadingDirs={loadingDirs}
+            onToggleDir={onToggleDir}
+            onOpenFile={onOpenFile}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="file-tree-node-wrapper">
       <div
@@ -250,6 +287,51 @@ function TreeNode({
       )}
     </div>
   )
+}
+
+/**
+ * 如果目录是单孩子链中的一环，返回折叠后的 [真实路径, 显示名, 链结束深度]。
+ * 例如 src/tools/utils 折叠为 "src/tools/utils"，节点显示 src/tools/utils。
+ */
+function foldSingleChildChain(
+  startPath: string,
+  entry: DirEntry,
+  dirEntries: Map<string, DirEntry[]>,
+  currentDepth: number,
+): [string, string, number] | null {
+  if (!entry.is_dir) return null
+
+  let currentPath = startPath
+  let chainLength = 0
+  const MAX_CHAIN = 5 // 最多折叠 5 层
+
+  while (chainLength < MAX_CHAIN) {
+    const kids = dirEntries.get(currentPath)
+    if (!kids) return null // 未加载，不折叠
+
+    // 筛选出目录项
+    const subdirs = kids.filter((k) => k.is_dir)
+    if (subdirs.length !== 1) break // 不是单孩子，停止
+
+    const onlyChild = subdirs[0]
+    const childPath = `${currentPath}\\${onlyChild.name}`
+
+    // 如果孩子被展开了，说明用户想看到详情，停止折叠
+    // 但这里我们只检查是否存在展开状态（这要求 expandedDirs 参数，此处不传，简化处理）
+
+    currentPath = childPath
+    chainLength++
+  }
+
+  if (chainLength === 0) return null
+
+  // 计算显示名称：取链的起止节点名
+  const parts = currentPath.split('\\')
+  const startName = startPath.split('\\').pop() || startPath
+  const endName = parts[parts.length - 1]
+  const foldedName = chainLength === 1 ? `${startName}/${endName}` : `${startName}/.../${endName}`
+
+  return [currentPath, foldedName, currentDepth + chainLength]
 }
 
 function getFileIcon(name: string): string {

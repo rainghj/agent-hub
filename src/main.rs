@@ -58,6 +58,15 @@ enum Commands {
         #[command(subcommand)]
         action: MemoryAction,
     },
+    /// 列出运行中的终端会话（需要 Tauri 已启动）
+    List,
+    /// 向指定终端发送文本（需要 Tauri 已启动）
+    Send {
+        /// 会话 ID
+        session_id: String,
+        /// 要发送的文本
+        text: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -102,5 +111,7 @@ fn main() -> Result<()> {
             MemoryAction::Add { content, r#type } => cli::memory::add(&content, &r#type),
             MemoryAction::Sync => cli::memory::sync(),
         },
+        Commands::List => cli::list::run(),
+        Commands::Send { session_id, text } => cli::send::run(&session_id, &text),
     }
 }
