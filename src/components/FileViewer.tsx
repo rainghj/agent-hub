@@ -2,22 +2,33 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import Editor from 'react-simple-code-editor'
 import Prism from 'prismjs'
 
-// 按需加载常用语言高亮
-import 'prismjs/components/prism-json'
-import 'prismjs/components/prism-javascript'
-import 'prismjs/components/prism-jsx'
-import 'prismjs/components/prism-typescript'
-import 'prismjs/components/prism-tsx'
-import 'prismjs/components/prism-css'
+// 按需加载常用语言高亮（注意：有依赖关系的语言必须按顺序加载）
+
+// 基础核心
+import 'prismjs/components/prism-clike'
 import 'prismjs/components/prism-markup'
+import 'prismjs/components/prism-markup-templating'
+import 'prismjs/components/prism-css'
+
+// Web 前端
+import 'prismjs/components/prism-javascript'
+import 'prismjs/components/prism-typescript'
+import 'prismjs/components/prism-json'
+import 'prismjs/components/prism-jsx'
+import 'prismjs/components/prism-tsx'
 import 'prismjs/components/prism-markdown'
-import 'prismjs/components/prism-rust'
-import 'prismjs/components/prism-python'
-import 'prismjs/components/prism-toml'
-import 'prismjs/components/prism-yaml'
+
+// 脚本与配置
 import 'prismjs/components/prism-bash'
 import 'prismjs/components/prism-powershell'
-// 更多常用语言
+import 'prismjs/components/prism-yaml'
+import 'prismjs/components/prism-toml'
+import 'prismjs/components/prism-ini'
+import 'prismjs/components/prism-diff'
+
+// 后端与编译型语言
+import 'prismjs/components/prism-rust'
+import 'prismjs/components/prism-python'
 import 'prismjs/components/prism-java'
 import 'prismjs/components/prism-c'
 import 'prismjs/components/prism-cpp'
@@ -33,8 +44,6 @@ import 'prismjs/components/prism-nginx'
 import 'prismjs/components/prism-lua'
 import 'prismjs/components/prism-dart'
 import 'prismjs/components/prism-regex'
-import 'prismjs/components/prism-ini'
-import 'prismjs/components/prism-diff'
 import 'prismjs/components/prism-csv'
 
 import 'prismjs/themes/prism-tomorrow.css'
