@@ -1,12 +1,13 @@
 use super::{Agent, Message, ProjectInfo, SessionInfo};
+use crate::settings::AgentProfile;
 use anyhow::{Context, Result};
 use chrono::{TimeZone, Utc};
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
 pub struct KimiAgent {
+    profile: AgentProfile,
     base_dir: PathBuf,
 }
 
@@ -19,6 +20,7 @@ struct SessionState {
 
 #[derive(Deserialize)]
 struct WireMessage {
+    #[allow(dead_code)]
     r#type: Option<String>,
     role: Option<String>,
     content: Option<String>,
@@ -39,11 +41,13 @@ struct WireOrigin {
 }
 
 impl KimiAgent {
-    pub fn new() -> Self {
-        let base_dir = dirs::home_dir()
-            .unwrap_or_default()
-            .join(".kimi-code");
-        Self { base_dir }
+    pub fn new(profile: AgentProfile) -> Self {
+        let base_dir = profile.resolved_data_dir();
+        Self { profile, base_dir }
+    }
+
+    fn agent_id(&self) -> String {
+        self.profile.id.clone()
     }
 
     fn list_workspaces(&self) -> Result<Vec<(String, PathBuf)>> {
@@ -72,7 +76,7 @@ impl KimiAgent {
 
 impl Agent for KimiAgent {
     fn name(&self) -> &str {
-        "kimi"
+        &self.profile.id
     }
 
     fn list_projects(&self) -> Result<Vec<ProjectInfo>> {
@@ -103,7 +107,7 @@ impl Agent for KimiAgent {
 
                 projects.push(ProjectInfo {
                     name,
-                    agent: "kimi".to_string(),
+                    agent: self.agent_id(),
                     path: Some(ws_path.to_string_lossy().to_string()),
                     session_count,
                 });
@@ -183,7 +187,7 @@ impl Agent for KimiAgent {
                         }
 
                         sessions.push(SessionInfo {
-                            agent: "kimi".to_string(),
+                            agent: self.agent_id(),
                             session_id,
                             title,
                             project: Some(_ws_name.clone()),

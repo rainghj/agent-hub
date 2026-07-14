@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import type { Session } from '../App'
+import { useAgentProfiles } from '../hooks/useAgentProfiles'
 import './Sidebar.css'
 
 interface SidebarProps {
@@ -25,6 +26,7 @@ function Sidebar({
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
+  const { profileById } = useAgentProfiles()
 
   const toggleProject = (projectPath: string) => {
     const newExpanded = new Set(expandedProjects)
@@ -79,16 +81,22 @@ function Sidebar({
   }, [filteredSessions])
 
   const getAgentIcon = (agent: string) => {
-    switch (agent) {
-      case 'claude':
-        return '🟤'
-      case 'mimo':
-        return '🔴'
-      case 'kimi':
-        return '🟢'
-      default:
-        return '⚪'
+    const color = profileById(agent)?.icon_color
+    if (color) {
+      return (
+        <span
+          className="agent-color-dot"
+          style={{
+            display: 'inline-block',
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            backgroundColor: color,
+          }}
+        />
+      )
     }
+    return <span className="agent-color-dot default">●</span>
   }
 
   const formatTime = (time?: string) => {

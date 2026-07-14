@@ -1,5 +1,5 @@
-use crate::agents::{claude::ClaudeAgent, kimi::KimiAgent, mimo::MimoAgent, Agent, ProjectInfo, SessionInfo, Message};
-use anyhow::Result;
+use crate::agents::{AgentRegistry, Message, ProjectInfo, SessionInfo};
+use crate::settings::AgentProfile;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -26,15 +26,9 @@ impl TerminalState {
 }
 
 #[tauri::command]
-pub fn get_projects() -> Result<Vec<ProjectInfo>, String> {
-    let agents: Vec<Box<dyn Agent>> = vec![
-        Box::new(ClaudeAgent::new()),
-        Box::new(MimoAgent::new()),
-        Box::new(KimiAgent::new()),
-    ];
-
+pub fn get_projects(registry: State<'_, AgentRegistry>) -> Result<Vec<ProjectInfo>, String> {
     let mut all_projects = Vec::new();
-    for agent in &agents {
+    for agent in registry.agents() {
         match agent.list_projects() {
             Ok(projects) => all_projects.extend(projects),
             Err(e) => eprintln!("Error listing projects for {}: {}", agent.name(), e),
@@ -44,15 +38,13 @@ pub fn get_projects() -> Result<Vec<ProjectInfo>, String> {
 }
 
 #[tauri::command]
-pub fn get_sessions(project: Option<String>, agent_filter: Option<String>) -> Result<Vec<SessionInfo>, String> {
-    let agents: Vec<Box<dyn Agent>> = vec![
-        Box::new(ClaudeAgent::new()),
-        Box::new(MimoAgent::new()),
-        Box::new(KimiAgent::new()),
-    ];
-
+pub fn get_sessions(
+    project: Option<String>,
+    agent_filter: Option<String>,
+    registry: State<'_, AgentRegistry>,
+) -> Result<Vec<SessionInfo>, String> {
     let mut all_sessions = Vec::new();
-    for agent in &agents {
+    for agent in registry.agents() {
         if let Some(ref filter) = agent_filter {
             if agent.name() != filter.as_str() {
                 continue;
@@ -80,14 +72,20 @@ pub fn get_sessions(project: Option<String>, agent_filter: Option<String>) -> Re
 }
 
 #[tauri::command]
-pub fn get_messages(session_id: String, agent: String) -> Result<Vec<Message>, String> {
-    let agent_impl: Box<dyn Agent> = match agent.as_str() {
-        "claude" => Box::new(ClaudeAgent::new()),
-        "mimo" => Box::new(MimoAgent::new()),
-        "kimi" => Box::new(KimiAgent::new()),
-        _ => return Err(format!("Unknown agent: {}", agent)),
-    };
+pub fn get_messages(
+    session_id: String,
+    agent: String,
+    registry: State<'_, AgentRegistry>,
+) -> Result<Vec<Message>, String> {
+    let agent_impl = registry
+        .agent_by_name(&agent)
+        .ok_or_else(|| format!("Unknown agent: {}", agent))?;
     agent_impl.get_messages(&session_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_agent_profiles(registry: State<'_, AgentRegistry>) -> Result<Vec<AgentProfile>, String> {
+    Ok(registry.profiles().to_vec())
 }
 
 #[tauri::command]
@@ -99,7 +97,12 @@ pub fn spawn_terminal(
     rows: u16,
     window: Window,
     state: State<'_, TerminalState>,
+    registry: State<'_, AgentRegistry>,
 ) -> Result<String, String> {
+    let profile = registry
+        .profile_by_id(&agent)
+        .ok_or_else(|| format!("Unknown agent: {}", agent))?;
+
     let terminal_id = format!("{}_{}", agent, &session_id[..8.min(session_id.len())]);
 
     // 检查是否已经在运行
@@ -123,29 +126,10 @@ pub fn spawn_terminal(
         })
         .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-    // 构建命令
-    let mut cmd = match agent.as_str() {
-        "claude" => CommandBuilder::new("claude"),
-        "mimo" => CommandBuilder::new("mimo"),
-        "kimi" => CommandBuilder::new("kimi"),
-        _ => return Err(format!("Unknown agent: {}", agent)),
-    };
-
-    // 添加参数
-    match agent.as_str() {
-        "claude" => {
-            cmd.arg("--resume");
-            cmd.arg(&session_id);
-        }
-        "mimo" => {
-            cmd.arg("--session");
-            cmd.arg(&session_id);
-        }
-        "kimi" => {
-            cmd.arg("--session");
-            cmd.arg(&session_id);
-        }
-        _ => {}
+    // 构建命令：从 profile 读取 command 和 args_template
+    let mut cmd = CommandBuilder::new(&profile.command);
+    for arg in profile.args_for_session(&session_id) {
+        cmd.arg(arg);
     }
 
     // 设置工作目录，让 agent 进入正确的项目目录
@@ -388,19 +372,24 @@ pub fn spawn_shell(
 }
 
 #[tauri::command]
-pub fn open_in_terminal(agent: String, session_id: String) -> Result<(), String> {
-    let (cmd, args) = match agent.as_str() {
-        "claude" => ("claude", vec!["--resume", &session_id]),
-        "mimo" => ("mimo", vec!["--session", &session_id]),
-        "kimi" => ("kimi", vec!["--session", &session_id]),
-        _ => return Err(format!("Unknown agent: {}", agent)),
-    };
+pub fn open_in_terminal(
+    agent: String,
+    session_id: String,
+    registry: State<'_, AgentRegistry>,
+) -> Result<(), String> {
+    let profile = registry
+        .profile_by_id(&agent)
+        .ok_or_else(|| format!("Unknown agent: {}", agent))?;
+
+    let cmd = profile.command.as_str();
+    let args: Vec<String> = profile.args_for_session(&session_id);
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("cmd")
             .args(["/c", "start", "cmd", "/k", cmd])
-            .args(&args)
+            .args(&arg_refs)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -409,7 +398,7 @@ pub fn open_in_terminal(agent: String, session_id: String) -> Result<(), String>
     {
         std::process::Command::new("x-terminal-emulator")
             .args(["-e", cmd])
-            .args(&args)
+            .args(&arg_refs)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -418,17 +407,14 @@ pub fn open_in_terminal(agent: String, session_id: String) -> Result<(), String>
 }
 
 #[tauri::command]
-pub fn search_sessions(query: String) -> Result<Vec<SessionInfo>, String> {
-    let agents: Vec<Box<dyn Agent>> = vec![
-        Box::new(ClaudeAgent::new()),
-        Box::new(MimoAgent::new()),
-        Box::new(KimiAgent::new()),
-    ];
-
+pub fn search_sessions(
+    query: String,
+    registry: State<'_, AgentRegistry>,
+) -> Result<Vec<SessionInfo>, String> {
     let mut results = Vec::new();
     let query_lower = query.to_lowercase();
 
-    for agent in &agents {
+    for agent in registry.agents() {
         if let Ok(sessions) = agent.list_sessions() {
             for session in sessions {
                 if let Some(ref title) = session.title {

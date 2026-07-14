@@ -1,4 +1,5 @@
 use super::{Agent, Message, ProjectInfo, SessionInfo};
+use crate::settings::AgentProfile;
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use rusqlite::Connection;
@@ -7,20 +8,21 @@ use std::fs;
 use std::path::PathBuf;
 
 pub struct MimoAgent {
+    profile: AgentProfile,
     db_path: PathBuf,
     memory_dir: PathBuf,
 }
 
 impl MimoAgent {
-    pub fn new() -> Self {
-        let base_dir = dirs::home_dir()
-            .unwrap_or_default()
-            .join(".local")
-            .join("share")
-            .join("mimocode");
+    pub fn new(profile: AgentProfile) -> Self {
+        let base_dir = profile.resolved_data_dir();
         let db_path = base_dir.join("mimocode.db");
         let memory_dir = base_dir.join("memory");
-        Self { db_path, memory_dir }
+        Self { profile, db_path, memory_dir }
+    }
+
+    fn agent_id(&self) -> String {
+        self.profile.id.clone()
     }
 
     fn extract_topic(checkpoint_path: &std::path::Path) -> Option<String> {
@@ -36,7 +38,7 @@ impl MimoAgent {
 
 impl Agent for MimoAgent {
     fn name(&self) -> &str {
-        "mimo"
+        &self.profile.id
     }
 
     fn list_projects(&self) -> Result<Vec<ProjectInfo>> {
@@ -83,7 +85,7 @@ impl Agent for MimoAgent {
                 if session_count > 0 {
                     projects.push(ProjectInfo {
                         name: "MiMo Sessions".to_string(),
-                        agent: "mimo".to_string(),
+                        agent: self.agent_id(),
                         path: None,
                         session_count,
                     });
@@ -92,7 +94,7 @@ impl Agent for MimoAgent {
                 for (project, sessions) in project_sessions {
                     projects.push(ProjectInfo {
                         name: project,
-                        agent: "mimo".to_string(),
+                        agent: self.agent_id(),
                         path: None,
                         session_count: sessions.len(),
                     });
@@ -123,7 +125,7 @@ impl Agent for MimoAgent {
                         if checkpoint.exists() {
                             let title = Self::extract_topic(&checkpoint);
                             sessions.push(SessionInfo {
-                                agent: "mimo".to_string(),
+                                agent: self.agent_id(),
                                 session_id,
                                 title,
                                 project: None,
@@ -168,7 +170,7 @@ impl Agent for MimoAgent {
                             let checkpoint = self.memory_dir.join("sessions").join(&id).join("checkpoint.md");
                             let title = Self::extract_topic(&checkpoint);
                             sessions.push(SessionInfo {
-                                agent: "mimo".to_string(),
+                                agent: self.agent_id(),
                                 session_id: id,
                                 title,
                                 project,

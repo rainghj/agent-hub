@@ -1,4 +1,5 @@
 use super::{Agent, Message, ProjectInfo, SessionInfo};
+use crate::settings::AgentProfile;
 use anyhow::{Context, Result};
 use chrono::{TimeZone, Utc};
 use serde::Deserialize;
@@ -7,6 +8,7 @@ use std::fs;
 use std::path::PathBuf;
 
 pub struct ClaudeAgent {
+    profile: AgentProfile,
     base_dir: PathBuf,
 }
 
@@ -21,6 +23,7 @@ struct HistoryEntry {
 
 #[derive(Deserialize)]
 struct SessionFile {
+    #[allow(dead_code)]
     pid: Option<u32>,
     session_id: Option<String>,
     cwd: Option<String>,
@@ -30,17 +33,19 @@ struct SessionFile {
 }
 
 impl ClaudeAgent {
-    pub fn new() -> Self {
-        let base_dir = dirs::home_dir()
-            .unwrap_or_default()
-            .join(".claude");
-        Self { base_dir }
+    pub fn new(profile: AgentProfile) -> Self {
+        let base_dir = profile.resolved_data_dir();
+        Self { profile, base_dir }
+    }
+
+    fn agent_id(&self) -> String {
+        self.profile.id.clone()
     }
 }
 
 impl Agent for ClaudeAgent {
     fn name(&self) -> &str {
-        "claude"
+        &self.profile.id
     }
 
     fn list_projects(&self) -> Result<Vec<ProjectInfo>> {
@@ -71,7 +76,7 @@ impl Agent for ClaudeAgent {
 
                 projects.insert(project_path.clone(), ProjectInfo {
                     name,
-                    agent: "claude".to_string(),
+                    agent: self.agent_id(),
                     path: Some(project_path),
                     session_count: sessions.len(),
                 });
@@ -108,7 +113,7 @@ impl Agent for ClaudeAgent {
             for (sid, (title, project, timestamp)) in session_map {
                 seen_sessions.insert(sid.clone());
                 sessions.push(SessionInfo {
-                    agent: "claude".to_string(),
+                    agent: self.agent_id(),
                     session_id: sid,
                     title: Some(title),
                     project,
@@ -132,7 +137,7 @@ impl Agent for ClaudeAgent {
                         let sid = file.session_id.unwrap_or_default();
                         if !seen_sessions.contains(&sid) {
                             sessions.push(SessionInfo {
-                                agent: "claude".to_string(),
+                                agent: self.agent_id(),
                                 session_id: sid,
                                 title: None,
                                 project: file.cwd,

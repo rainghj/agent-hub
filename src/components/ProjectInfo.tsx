@@ -1,3 +1,4 @@
+import { useAgentProfiles } from '../hooks/useAgentProfiles'
 import './ProjectInfo.css'
 
 interface Session {
@@ -16,13 +17,10 @@ interface ProjectInfoProps {
 }
 
 function ProjectInfo({ session }: ProjectInfoProps) {
+  const { profileById } = useAgentProfiles()
+
   const getAgentName = (agent: string) => {
-    switch (agent) {
-      case 'claude': return 'Claude Code'
-      case 'mimo': return 'MiMo Code'
-      case 'kimi': return 'Kimi Code'
-      default: return agent
-    }
+    return profileById(agent)?.name || agent
   }
 
   const getStatusText = (status?: string) => {
