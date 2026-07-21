@@ -24,7 +24,8 @@
         "height": 800,
         "resizable": true,
         "fullscreen": false,
-        "visible": false
+        "visible": false,
+        "theme": "Dark"
       }
     ],
     "security": {

@@ -105,10 +105,15 @@ impl TerminalManager {
             .map_err(|e| e.to_string())
     }
 
-    /// 关闭并移除会话
+    /// 关闭并移除会话（先杀进程树，再杀主进程）
     pub fn close(&self, id: &str) -> Result<(), String> {
         let mut map = self.sessions.lock().map_err(|e| e.to_string())?;
         if let Some(mut session) = map.remove(id) {
+            // 先杀子进程树
+            if let Some(pid) = session.child.process_id() {
+                kill_process_tree(pid);
+            }
+            // 再杀主进程
             let _ = session.child.kill();
         }
         Ok(())
@@ -154,7 +159,41 @@ fn create_pty(
     Ok((master, writer, reader, child))
 }
 
-/// 启动 PTY reader 线程，将输出批量推送到前端（≈8ms 批处理）
+/// 杀死进程及其所有子进程（跨平台，无需额外依赖）
+fn kill_process_tree(pid: u32) {
+    #[cfg(unix)]
+    {
+        // Unix: 递归杀子进程 → 杀自己
+        if let Ok(output) = std::process::Command::new("pgrep")
+            .args(["-P", &pid.to_string()])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if let Ok(child_pid) = line.trim().parse::<u32>() {
+                    kill_process_tree(child_pid);
+                }
+            }
+        }
+        // 用 kill 命令发 SIGTERM（避免依赖 libc）
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .output();
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {}
+}
 fn spawn_reader_thread(mut reader: Box<dyn Read + Send>, terminal_id: String, window: Window) {
     std::thread::spawn(move || {
         use std::time::{Duration, Instant};
@@ -237,11 +276,91 @@ fn build_agent_command(
     Ok(cmd)
 }
 
-fn build_shell_command(project_path: &str) -> CommandBuilder {
+/// 检测系统默认 shell（跨平台）
+fn detect_default_shell() -> String {
     #[cfg(target_os = "windows")]
-    let mut cmd = CommandBuilder::new("powershell.exe");
+    {
+        // 搜索 PATH 找 pwsh / powershell
+        fn find_in_path(name: &str) -> Option<String> {
+            let path = std::env::var_os("PATH")?;
+            for dir in std::env::split_paths(&path) {
+                let candidate = dir.join(name);
+                if candidate.exists() {
+                    return Some(candidate.to_string_lossy().to_string());
+                }
+            }
+            None
+        }
+        for candidate in ["pwsh.exe", "powershell.exe"] {
+            if let Some(path) = find_in_path(candidate) {
+                return path;
+            }
+        }
+        std::env::var("COMSPEC").unwrap_or_else(|_| "powershell.exe".to_string())
+    }
+
     #[cfg(not(target_os = "windows"))]
-    let mut cmd = CommandBuilder::new("/bin/sh");
+    {
+        // 1. 读 $SHELL
+        if let Ok(shell) = std::env::var("SHELL") {
+            if !shell.is_empty() && shell != "/bin/false" {
+                return shell;
+            }
+        }
+        // 2. 读 /etc/shells
+        if let Ok(contents) = std::fs::read_to_string("/etc/shells") {
+            let shells: Vec<&str> = contents
+                .lines()
+                .filter(|l| {
+                    let t = l.trim();
+                    !t.is_empty() && !t.starts_with('#') && std::path::Path::new(t).exists()
+                })
+                .collect();
+            if !shells.is_empty() {
+                return shells[0].to_string();
+            }
+        }
+        // 3. 回退
+        for fb in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
+            if std::path::Path::new(fb).exists() {
+                return fb.to_string();
+            }
+        }
+        "/bin/sh".to_string()
+    }
+}
+
+fn build_shell_command(project_path: &str) -> CommandBuilder {
+    let shell = detect_default_shell();
+
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let basename = std::path::Path::new(&shell)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        let mut c = CommandBuilder::new(&shell);
+        // PowerShell 需要 -NoExit 避免启动后就退出
+        if basename.eq_ignore_ascii_case("powershell.exe")
+            || basename.eq_ignore_ascii_case("pwsh.exe")
+        {
+            c.arg("-NoExit");
+        }
+        c
+    };
+    #[cfg(not(target_os = "windows"))]
+    let mut cmd = {
+        let basename = std::path::Path::new(&shell)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        let mut c = CommandBuilder::new(&shell);
+        // 登录 shell
+        if matches!(basename, "zsh" | "bash" | "sh" | "fish") {
+            c.arg("-l");
+        }
+        c
+    };
 
     cmd.cwd(project_path);
     cmd.env("TERM", "xterm-256color");

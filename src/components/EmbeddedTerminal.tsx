@@ -2,107 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { WebglAddon } from '@xterm/addon-webgl'
+import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import './EmbeddedTerminal.css'
 
 const isTauri = typeof window !== 'undefined' && window.__TAURI__
-
-/**
- * 修复 xterm.js 在 WebView 中中文输入法重复输入的问题。
- * 在 composition 期间屏蔽 term.onData，只在 compositionend 时发送最终文本，
- * 并跳过 compositionend 后 xterm 可能再次触发的相同 onData。
- */
-function attachIMEFix(
-  term: Terminal,
-  onDataCallback: (data: string) => void
-): { dispose: () => void } {
-  const textarea = term.textarea
-  if (!textarea) {
-    const disposable = term.onData(onDataCallback)
-    return { dispose: () => disposable.dispose() }
-  }
-
-  let isComposing = false
-  let compositionText = ''
-  let justEndedComposition = false
-  let lastCompositionText = ''
-
-  const sendText = (text: string | null | undefined) => {
-    if (!text) return
-    onDataCallback(text)
-  }
-
-  const handleCompositionStart = (event: CompositionEvent) => {
-    isComposing = true
-    compositionText = ''
-    textarea.value = ''
-    event.stopImmediatePropagation()
-  }
-
-  const handleCompositionUpdate = (event: CompositionEvent) => {
-    compositionText = event.data ?? ''
-    event.stopImmediatePropagation()
-  }
-
-  const handleCompositionEnd = (event: CompositionEvent) => {
-    const text = event.data || compositionText
-    isComposing = false
-    compositionText = ''
-    textarea.value = ''
-    event.stopImmediatePropagation()
-    lastCompositionText = text
-    justEndedComposition = true
-    sendText(text)
-    // 下一帧清除标志，避免阻塞后续正常输入
-    window.requestAnimationFrame(() => {
-      justEndedComposition = false
-      lastCompositionText = ''
-    })
-  }
-
-  const handleBeforeInput = (event: InputEvent) => {
-    if (event.inputType === 'insertCompositionText') {
-      compositionText = event.data ?? compositionText
-      event.preventDefault()
-      event.stopImmediatePropagation()
-      return
-    }
-    if (isComposing) {
-      event.preventDefault()
-      event.stopImmediatePropagation()
-    }
-  }
-
-  const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.keyCode === 229 || isComposing) {
-      event.stopImmediatePropagation()
-    }
-  }
-
-  const disposable = term.onData((data) => {
-    if (justEndedComposition && data === lastCompositionText) {
-      return
-    }
-    onDataCallback(data)
-  })
-
-  textarea.addEventListener('compositionstart', handleCompositionStart, true)
-  textarea.addEventListener('compositionupdate', handleCompositionUpdate, true)
-  textarea.addEventListener('compositionend', handleCompositionEnd, true)
-  textarea.addEventListener('beforeinput', handleBeforeInput, true)
-  textarea.addEventListener('keydown', handleKeyDown, true)
-
-  return {
-    dispose: () => {
-      textarea.removeEventListener('compositionstart', handleCompositionStart, true)
-      textarea.removeEventListener('compositionupdate', handleCompositionUpdate, true)
-      textarea.removeEventListener('compositionend', handleCompositionEnd, true)
-      textarea.removeEventListener('beforeinput', handleBeforeInput, true)
-      textarea.removeEventListener('keydown', handleKeyDown, true)
-      disposable.dispose()
-    },
-  }
-}
 
 interface EmbeddedTerminalProps {
   type: 'shell' | 'session'
@@ -129,7 +34,32 @@ function EmbeddedTerminal({
 
   const displayTerminalId = type === 'shell' ? shellId : `${agent}_${sessionId?.slice(0, 8)}`
 
+  // ── 搜索状态 ──
+  const [searchVisible, setSearchVisible] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchCaseSensitive, setSearchCaseSensitive] = useState(false)
+  const [searchWholeWord, setSearchWholeWord] = useState(false)
+  const [searchRegex, setSearchRegex] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const searchAddonRef = useRef<SearchAddon | null>(null)
+  const terminalElRef = useRef<HTMLDivElement>(null)
+
+  const doSearch = (query: string) => {
+    const addon = searchAddonRef.current
+    if (!addon) return
+    if (!query) {
+      addon.findNext('', { caseSensitive: false, wholeWord: false, regex: false })
+      return
+    }
+    addon.findNext(query, {
+      caseSensitive: searchCaseSensitive,
+      wholeWord: searchWholeWord,
+      regex: searchRegex,
+    })
+  }
+
   useEffect(() => {
+    if (!terminalRef.current) return
     if (!terminalRef.current) return
 
     mountedRef.current = true
@@ -150,16 +80,30 @@ function EmbeddedTerminal({
       fontFamily: 'Consolas, "Cascadia Code", "Courier New", monospace',
       fontSize: 14,
       lineHeight: 1.2,
+      cursorStyle: 'bar',
+      cursorWidth: 2,
       cursorBlink: true,
-      convertEol: true,
       allowProposedApi: true,
     })
 
     const fitAddon = new FitAddon()
     const webLinksAddon = new WebLinksAddon()
+    const webglAddon = new WebglAddon()
+    const searchAddon = new SearchAddon()
 
     terminal.loadAddon(fitAddon)
     terminal.loadAddon(webLinksAddon)
+    // 临时禁用 WebGL 渲染器，排查 cursor 残影是否由 WebGL 层引起
+    // WebGL addon 可能在某些 GPU/驱动上失败，静默回退到 Canvas
+    /*
+    try {
+      terminal.loadAddon(webglAddon)
+    } catch {
+      console.warn('[Terminal] WebGL addon failed to load, falling back to canvas renderer')
+    }
+    */
+    terminal.loadAddon(searchAddon)
+    searchAddonRef.current = searchAddon
 
     let initTimeoutId: number | null = null
     let ptyPromise: Promise<void> = Promise.resolve()
@@ -175,7 +119,7 @@ function EmbeddedTerminal({
     }
     window.addEventListener('resize', handleResize)
 
-    // 处理终端输入（带 IME 修复）
+    // 处理终端输入（与 VS Code / Sidex 一致：直接走 xterm 内置 onData，不做额外 IME 拦截）
     const sendInput = async (data: string) => {
       const id = terminalIdRef.current
       if (id && isTauri) {
@@ -190,7 +134,7 @@ function EmbeddedTerminal({
         }
       }
     }
-    const inputDisposable = attachIMEFix(terminal, sendInput)
+    const inputDisposable = terminal.onData(sendInput)
 
     // 等容器有非零尺寸后再 open xterm，避免 RenderService dimensions 报错
     let hasOpened = false
@@ -202,6 +146,21 @@ function EmbeddedTerminal({
       fitAddonRef.current = fitAddon
       terminalInstance.current = terminal
       ptyPromise = startPtyTerminal(terminal, fitAddon)
+
+      // Ctrl+Shift+F 打开搜索
+      terminal.attachCustomKeyEventHandler((e) => {
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'f') {
+          setSearchVisible(true)
+          setTimeout(() => searchInputRef.current?.focus(), 50)
+          return false
+        }
+        if (e.key === 'Escape' && searchVisible) {
+          setSearchVisible(false)
+          setSearchQuery('')
+          return false
+        }
+        return true
+      })
     }
 
     const resizeObserver = new ResizeObserver((entries) => {
@@ -227,11 +186,21 @@ function EmbeddedTerminal({
       doOpen()
     }, 500)
 
+    // 窗口重新获得焦点或页面可见时，强制刷新整个 viewport，清除切换窗口可能留下的残影
+    const handleFocusRefresh = () => {
+      if (disposedRef.current || !terminalInstance.current) return
+      terminalInstance.current.refresh(0, terminalInstance.current.rows - 1)
+    }
+    window.addEventListener('focus', handleFocusRefresh)
+    document.addEventListener('visibilitychange', handleFocusRefresh)
+
     return () => {
       mountedRef.current = false
       disposedRef.current = true
       resizeObserver.disconnect()
       window.removeEventListener('resize', handleResize)
+      window.removeEventListener('focus', handleFocusRefresh)
+      document.removeEventListener('visibilitychange', handleFocusRefresh)
       inputDisposable.dispose()
       if (initTimeoutId !== null) {
         window.clearTimeout(initTimeoutId)
@@ -368,7 +337,58 @@ function EmbeddedTerminal({
   }
 
   return (
-    <div className="embedded-terminal">
+    <div className="embedded-terminal" ref={terminalElRef}>
+      {searchVisible && (
+        <div className="terminal-search-bar">
+          <input
+            ref={searchInputRef}
+            className="terminal-search-input"
+            type="text"
+            placeholder="搜索..."
+            value={searchQuery}
+            onChange={(e) => {
+              const q = e.target.value
+              setSearchQuery(q)
+              doSearch(q)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                doSearch(searchQuery)
+              }
+              if (e.key === 'Escape') {
+                setSearchVisible(false)
+                setSearchQuery('')
+                terminalInstance.current?.focus()
+              }
+            }}
+          />
+          <button
+            className={`terminal-search-option ${searchCaseSensitive ? 'active' : ''}`}
+            onClick={() => setSearchCaseSensitive(!searchCaseSensitive)}
+            title="区分大小写"
+          >
+            Aa
+          </button>
+          <button
+            className={`terminal-search-option ${searchRegex ? 'active' : ''}`}
+            onClick={() => setSearchRegex(!searchRegex)}
+            title="正则表达式"
+          >
+            .*
+          </button>
+          <button
+            className="terminal-search-close"
+            onClick={() => {
+              setSearchVisible(false)
+              setSearchQuery('')
+              terminalInstance.current?.focus()
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <div className="terminal-body" ref={terminalRef} />
     </div>
   )
