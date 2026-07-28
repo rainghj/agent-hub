@@ -2,31 +2,34 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  background-color: #18181b;
+  background: var(--bg-deepest);
   overflow: hidden;
   min-width: 0;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
 }
 
 .terminal-tabs-bar {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 2px;
-  padding: 4px 4px 0 4px;
-  background-color: #202023;
-  border-bottom: 1px solid #27272a;
+  padding: 6px 8px;
+  background: var(--bg-input);
+  border-bottom: 1px solid var(--border);
   overflow-x: auto;
   overflow-y: hidden;
   flex-shrink: 0;
+  min-height: 38px;
 }
 
 .terminal-tab {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
-  background-color: #18181b;
-  border-radius: 4px 4px 0 0;
-  color: #71717a;
+  padding: 5px 10px;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
@@ -36,17 +39,18 @@
 }
 
 .terminal-tab:hover {
-  background-color: #27272a;
-  color: #a1a1aa;
+  background: var(--bg-raised);
+  color: var(--text-secondary);
 }
 
 .terminal-tab.active {
-  background-color: #18181b;
-  color: #e4e4e7;
+  background: var(--bg-deepest);
+  color: var(--text-primary);
 }
 
 .terminal-tab-icon {
   font-size: 10px;
+  color: inherit;
 }
 
 .terminal-tab-title {
@@ -56,13 +60,14 @@
   gap: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
 }
 
 .terminal-tab-dirty {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background-color: #e3b341;
+  background: var(--warn);
   flex-shrink: 0;
 }
 
@@ -70,46 +75,37 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   padding: 0;
-  background: none;
-  border: none;
-  color: #52525b;
+  color: var(--text-muted);
   font-size: 10px;
-  cursor: pointer;
   border-radius: 3px;
   transition: background-color 0.1s, color 0.1s;
 }
 
 .terminal-tab-close:hover {
-  background-color: #3f3f46;
-  color: #d4d4d8;
+  background: var(--bg-raised);
+  color: var(--text-primary);
 }
 
 .terminal-tab-new {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   margin-left: auto;
-  margin-right: 4px;
   padding: 0;
-  background: none;
-  border: none;
-  color: #71717a;
-  font-size: 18px;
-  font-weight: 300;
-  cursor: pointer;
-  border-radius: 4px;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
   transition: background-color 0.1s, color 0.1s;
   flex-shrink: 0;
 }
 
 .terminal-tab-new:hover {
-  background-color: #27272a;
-  color: #d4d4d8;
+  background: var(--bg-raised);
+  color: var(--text-primary);
 }
 
 .terminal-tabs-content {
@@ -139,14 +135,15 @@
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  color: #52525b;
+  color: var(--text-tertiary);
   gap: 16px;
 }
 
 .terminal-empty-icon {
   font-size: 48px;
+  color: var(--text-muted);
 }
 
 .terminal-empty-text {
-  font-size: 14px;
+  font-size: 13px;
 }

@@ -1,38 +1,42 @@
+/* ── 容器 ── */
 .file-panel {
   width: 280px;
   min-width: 280px;
-  background-color: #18181b;
-  border-left: 1px solid #27272a;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  color: #d4d4d8;
+  padding: 12px 12px 12px 0;
   font-size: 13px;
 }
 
+/* ── 头部（标题 + 路径） ── */
 .file-panel-header {
-  padding: 12px 14px;
-  border-bottom: 1px solid #27272a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 8px;
   flex-shrink: 0;
 }
 
-.file-panel-header h3 {
-  font-size: 11px;
-  font-weight: 600;
-  color: #a1a1aa;
-  margin: 0 0 6px 0;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.file-panel-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 .file-panel-path {
   font-size: 12px;
-  color: #71717a;
+  color: var(--text-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 60%;
 }
 
+/* ── 内容区 ── */
 .file-panel-content {
   flex: 1;
   overflow-y: auto;
@@ -41,7 +45,8 @@
 }
 
 .file-tree {
-  font-size: 13px;
+  display: flex;
+  flex-direction: column;
 }
 
 .file-tree-node-wrapper {
@@ -49,83 +54,97 @@
   flex-direction: column;
 }
 
-.file-tree-node {
+/* ── 树行 ── */
+.file-tree-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
+  gap: 6px;
+  height: 28px;
+  padding-right: 8px;
   cursor: pointer;
+  border-radius: var(--radius-sm);
   transition: background-color 0.1s;
-  border-radius: 4px;
-  margin: 0 4px;
-  min-width: 0;
+  user-select: none;
 }
 
-.file-tree-node:hover {
-  background-color: #27272a;
+.file-tree-row:hover {
+  background: var(--bg-raised);
 }
 
+.file-tree-row.is-dir .file-tree-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.file-tree-row.is-file .file-tree-name {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+/* ── 缩进切换箭头 ── */
 .file-tree-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 14px;
   height: 14px;
-  color: #71717a;
-  font-size: 10px;
+  color: var(--text-tertiary);
   flex-shrink: 0;
 }
 
-.file-tree-toggle:hover {
-  color: #a1a1aa;
+.file-tree-toggle-loading {
+  font-size: 10px;
+  animation: file-spin 1s linear infinite;
 }
 
 .file-tree-toggle-placeholder {
-  pointer-events: none;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: inline-block;
 }
 
+@keyframes file-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── 图标 ── */
 .file-tree-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 16px;
   height: 16px;
-  font-size: 12px;
   flex-shrink: 0;
 }
 
+/* ── 文件名 ── */
 .file-tree-name {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #d4d4d8;
   min-width: 0;
 }
 
-.file-tree-dir .file-tree-name {
-  color: #d4d4d8;
-  font-weight: 500;
-}
-
-.file-tree-file .file-tree-name {
-  color: #a1a1aa;
-}
-
+/* ── 子节点容器 ── */
 .file-tree-children {
   display: flex;
   flex-direction: column;
 }
 
+/* ── 空/错误态 ── */
 .file-panel-empty,
-.file-panel-loading,
-.file-panel-error {
+.file-panel-loading {
   padding: 24px 16px;
   text-align: center;
-  font-size: 13px;
-  color: #71717a;
+  font-size: 12px;
+  color: var(--text-tertiary);
 }
 
 .file-panel-error {
-  color: #f87171;
+  padding: 12px 16px;
+  color: var(--danger);
+  font-size: 12px;
 }

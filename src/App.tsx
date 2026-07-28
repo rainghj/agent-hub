@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import TitleBar from './components/TitleBar'
 import Sidebar from './components/Sidebar'
 import { useWorkspaceState, SerializedTab, ProjectWorkspaceState, GlobalWorkspaceState } from './hooks/useWorkspaceState'
 import TerminalTabs from './components/TerminalTabs'
@@ -762,41 +763,44 @@ function App() {
 
   return (
     <div className="app">
-      <Sidebar
-        sessions={sessions}
-        selectedProject={selectedProject}
-        onSelectProject={selectProject}
-        onOpenShell={openShellTab}
-        onOpenSession={openSessionTab}
-        expandedProjects={expandedProjects}
-        onExpandedProjectsChange={setExpandedProjects}
-        recentProjects={recentProjects}
-        onOpenProjectFolder={isTauri ? openProjectFolder : undefined}
-        onRemoveRecentProject={removeRecentProject}
-        runningSessions={runningSessions}
-        outputtingSessions={outputtingSessions}
-      />
-      <ErrorBoundary fallback={<div className="error-boundary-fallback"><h3>终端面板加载失败</h3><p>请刷新页面重试</p></div>}>
-        <TerminalTabs
-          tabs={tabs}
-          activeTabId={activeTabId}
-          onSelectTab={selectTab}
-          onCloseTab={closeTab}
-          onSetTabDirty={handleFileDirtyChange}
-          onNewShell={() => {
-            const projectPath = selectedProject || 'C:\\CODE\\AICode\\agent-hub'
-            openShellTab(projectPath)
-          }}
+      <TitleBar />
+      <div className="app-body">
+        <Sidebar
+          sessions={sessions}
+          selectedProject={selectedProject}
+          onSelectProject={selectProject}
+          onOpenShell={openShellTab}
+          onOpenSession={openSessionTab}
+          expandedProjects={expandedProjects}
+          onExpandedProjectsChange={setExpandedProjects}
+          recentProjects={recentProjects}
+          onOpenProjectFolder={isTauri ? openProjectFolder : undefined}
+          onRemoveRecentProject={removeRecentProject}
+          runningSessions={runningSessions}
+          outputtingSessions={outputtingSessions}
         />
-      </ErrorBoundary>
-      <ErrorBoundary fallback={<div className="error-boundary-fallback"><h3>文件面板加载失败</h3><p>请刷新页面重试</p></div>}>
-        <FilePanel
-          projectPath={selectedProject}
-          onOpenFile={openFileTab}
-          expandedDirs={expandedDirs}
-          onExpandedDirsChange={setExpandedDirs}
-        />
-      </ErrorBoundary>
+        <ErrorBoundary fallback={<div className="error-boundary-fallback"><h3>终端面板加载失败</h3><p>请刷新页面重试</p></div>}>
+          <TerminalTabs
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelectTab={selectTab}
+            onCloseTab={closeTab}
+            onSetTabDirty={handleFileDirtyChange}
+            onNewShell={() => {
+              const projectPath = selectedProject || 'C:\\CODE\\AICode\\agent-hub'
+              openShellTab(projectPath)
+            }}
+          />
+        </ErrorBoundary>
+        <ErrorBoundary fallback={<div className="error-boundary-fallback"><h3>文件面板加载失败</h3><p>请刷新页面重试</p></div>}>
+          <FilePanel
+            projectPath={selectedProject}
+            onOpenFile={openFileTab}
+            expandedDirs={expandedDirs}
+            onExpandedDirsChange={setExpandedDirs}
+          />
+        </ErrorBoundary>
+      </div>
 
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}

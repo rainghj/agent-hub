@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { FolderIcon, FileIcon, ChevronRightIcon, ChevronDownIcon } from './Icons'
 import './FilePanel.css'
 
 interface DirEntry {
@@ -17,12 +18,10 @@ interface FilePanelProps {
 const isTauri = typeof window !== 'undefined' && window.__TAURI__
 
 function FilePanel({ projectPath, onOpenFile, expandedDirs, onExpandedDirsChange }: FilePanelProps) {
-  // 每个目录路径对应的内容缓存
   const [dirEntries, setDirEntries] = useState<Map<string, DirEntry[]>>(new Map())
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
 
-  // 初始加载根目录并展开
   useEffect(() => {
     if (!projectPath || projectPath === '未分类') {
       onExpandedDirsChange(new Set())
@@ -72,14 +71,12 @@ function FilePanel({ projectPath, onOpenFile, expandedDirs, onExpandedDirsChange
     const isExpanded = expandedDirs.has(path)
 
     if (isExpanded) {
-      // 折叠
       const next = new Set(expandedDirs)
       next.delete(path)
       onExpandedDirsChange(next)
       return
     }
 
-    // 展开：如果还没加载过，先加载
     if (!dirEntries.has(path)) {
       setLoadingDirs((prev) => {
         const next = new Set(prev)
@@ -108,11 +105,15 @@ function FilePanel({ projectPath, onOpenFile, expandedDirs, onExpandedDirsChange
     onOpenFile?.(filePath)
   }, [onOpenFile])
 
+  const projectName = projectPath
+    ? projectPath.split('\\').pop() || projectPath.split('/').pop() || projectPath
+    : ''
+
   if (!projectPath) {
     return (
       <div className="file-panel">
         <div className="file-panel-header">
-          <h3>文件</h3>
+          <span className="file-panel-title">文件</span>
         </div>
         <div className="file-panel-empty">选择一个目录查看文件</div>
       </div>
@@ -124,10 +125,8 @@ function FilePanel({ projectPath, onOpenFile, expandedDirs, onExpandedDirsChange
   return (
     <div className="file-panel">
       <div className="file-panel-header">
-        <h3>文件</h3>
-        <div className="file-panel-path" title={projectPath}>
-          {projectPath.split('\\').pop() || projectPath.split('/').pop() || projectPath}
-        </div>
+        <span className="file-panel-title">文件</span>
+        <span className="file-panel-path" title={projectPath}>{projectName}</span>
       </div>
       <div className="file-panel-content">
         {error && <div className="file-panel-error">{error}</div>}
@@ -180,93 +179,42 @@ function TreeNode({
   const isLoading = loadingDirs.has(path)
   const children = dirEntries.get(path)
 
-  // 计算折叠链：如果当前目录只有一个子目录，向上折叠显示 a/b/c
-  const folded = foldSingleChildChain(path, entry, dirEntries, depth)
-
-  if (folded) {
-    const [foldedPath, foldedName, foldedDepth] = folded
-    return (
-      <div className="file-tree-node-wrapper">
-        <div
-          className="file-tree-node file-tree-dir"
-          style={{ paddingLeft: depth * 16 + 8 }}
-        >
-          <span
-            className="file-tree-toggle"
-            onClick={() => onToggleDir(foldedPath)}
-          >
-            {expandedDirs.has(foldedPath) ? '▾' : '▸'}
-          </span>
-          <span
-            className="file-tree-icon"
-            onClick={() => onToggleDir(foldedPath)}
-          >
-            📁
-          </span>
-          <span
-            className="file-tree-name"
-            onClick={() => onToggleDir(foldedPath)}
-          >
-            {foldedName}
-          </span>
-        </div>
-        {expandedDirs.has(foldedPath) && (
-          <TreeNode
-            key={foldedPath}
-            path={foldedPath}
-            entry={{ name: foldedPath.split('\\').pop() || foldedPath, is_dir: true, size: 0 }}
-            depth={foldedDepth}
-            expandedDirs={expandedDirs}
-            dirEntries={dirEntries}
-            loadingDirs={loadingDirs}
-            onToggleDir={onToggleDir}
-            onOpenFile={onOpenFile}
-          />
-        )}
-      </div>
-    )
+  const handleClick = () => {
+    if (entry.is_dir) {
+      onToggleDir(path)
+    } else {
+      onOpenFile(path)
+    }
   }
 
   return (
     <div className="file-tree-node-wrapper">
       <div
-        className={`file-tree-node ${entry.is_dir ? 'file-tree-dir' : 'file-tree-file'}`}
-        style={{ paddingLeft: depth * 16 + 8 }}
+        className={`file-tree-row ${entry.is_dir ? 'is-dir' : 'is-file'}`}
+        style={{ paddingLeft: 8 + depth * 14 }}
+        onClick={handleClick}
       >
         {entry.is_dir ? (
-          <span
-            className="file-tree-toggle"
-            onClick={() => onToggleDir(path)}
-          >
-            {isLoading ? '◌' : isExpanded ? '▾' : '▸'}
+          <span className="file-tree-toggle">
+            {isLoading ? (
+              <span className="file-tree-toggle-loading">◌</span>
+            ) : isExpanded ? (
+              <ChevronDownIcon size={10} />
+            ) : (
+              <ChevronRightIcon size={10} />
+            )}
           </span>
         ) : (
-          <span className="file-tree-toggle file-tree-toggle-placeholder" />
+          <span className="file-tree-toggle-placeholder" />
         )}
-        <span
-          className="file-tree-icon"
-          onClick={() => {
-            if (entry.is_dir) {
-              onToggleDir(path)
-            } else {
-              onOpenFile(path)
-            }
-          }}
-        >
-          {entry.is_dir ? (isExpanded ? '📂' : '📁') : getFileIcon(entry.name)}
+        <span className="file-tree-icon">
+          {entry.is_dir ? (
+            <FolderIcon size={14} style={{ color: '#A1A1AA' }} />
+          ) : (
+            <FileIcon size={14} style={{ color: '#A1A1AA' }} />
+          )}
         </span>
-        <span
-          className="file-tree-name"
-          onClick={() => {
-            if (entry.is_dir) {
-              onToggleDir(path)
-            } else {
-              onOpenFile(path)
-            }
-          }}
-        >
-          {entry.name}
-        </span>
+        <span className="file-tree-name">{entry.name}</span>
       </div>
       {entry.is_dir && isExpanded && children && (
         <div className="file-tree-children">
@@ -287,102 +235,6 @@ function TreeNode({
       )}
     </div>
   )
-}
-
-/**
- * 如果目录是单孩子链中的一环，返回折叠后的 [真实路径, 显示名, 链结束深度]。
- * 例如 src/tools/utils 折叠为 "src/tools/utils"，节点显示 src/tools/utils。
- */
-function foldSingleChildChain(
-  startPath: string,
-  entry: DirEntry,
-  dirEntries: Map<string, DirEntry[]>,
-  currentDepth: number,
-): [string, string, number] | null {
-  if (!entry.is_dir) return null
-
-  let currentPath = startPath
-  let chainLength = 0
-  const MAX_CHAIN = 5 // 最多折叠 5 层
-
-  while (chainLength < MAX_CHAIN) {
-    const kids = dirEntries.get(currentPath)
-    if (!kids) return null // 未加载，不折叠
-
-    // 筛选出目录项
-    const subdirs = kids.filter((k) => k.is_dir)
-    if (subdirs.length !== 1) break // 不是单孩子，停止
-
-    const onlyChild = subdirs[0]
-    const childPath = `${currentPath}\\${onlyChild.name}`
-
-    // 如果孩子被展开了，说明用户想看到详情，停止折叠
-    // 但这里我们只检查是否存在展开状态（这要求 expandedDirs 参数，此处不传，简化处理）
-
-    currentPath = childPath
-    chainLength++
-  }
-
-  if (chainLength === 0) return null
-
-  // 计算显示名称：取链的起止节点名
-  const parts = currentPath.split('\\')
-  const startName = startPath.split('\\').pop() || startPath
-  const endName = parts[parts.length - 1]
-  const foldedName = chainLength === 1 ? `${startName}/${endName}` : `${startName}/.../${endName}`
-
-  return [currentPath, foldedName, currentDepth + chainLength]
-}
-
-function getFileIcon(name: string): string {
-  const ext = name.split('.').pop()?.toLowerCase() || ''
-  const iconMap: Record<string, string> = {
-    json: '📋',
-    js: '📜',
-    jsx: '⚛',
-    ts: '🔷',
-    tsx: '🔷',
-    css: '🎨',
-    html: '🌐',
-    htm: '🌐',
-    md: '📝',
-    markdown: '📝',
-    rs: '🦀',
-    py: '🐍',
-    toml: '⚙',
-    yaml: '⚙',
-    yml: '⚙',
-    sh: '⌨',
-    ps1: '⌨',
-    exe: '⚙',
-    lock: '🔒',
-    java: '☕',
-    c: '🔵',
-    cpp: '🔵',
-    h: '🔵',
-    hpp: '🔵',
-    cs: '🔷',
-    go: '🐹',
-    swift: '🐦',
-    kt: '🟣',
-    kts: '🟣',
-    php: '🐘',
-    sql: '🗃',
-    graphql: '◈',
-    gql: '◈',
-    dockerfile: '🐳',
-    nginx: '🌿',
-    lua: '🌙',
-    dart: '🎯',
-    vue: '🟢',
-    svelte: '🧡',
-    ini: '⚙',
-    cfg: '⚙',
-    diff: '📑',
-    patch: '📑',
-    csv: '📊',
-  }
-  return iconMap[ext] || '📄'
 }
 
 export default FilePanel

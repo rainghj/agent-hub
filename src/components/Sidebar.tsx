@@ -1,7 +1,12 @@
 import { useState, useMemo, type CSSProperties } from 'react'
 import type { Session } from '../App'
 import { useAgentProfiles } from '../hooks/useAgentProfiles'
+import { SearchIcon, FolderIcon, PlusIcon, ChevronDownIcon, ChevronRightIcon } from './Icons'
 import './Sidebar.css'
+
+const RECENT_THRESHOLD_MS = 5 * 24 * 60 * 60 * 1000 // 5 天
+const OLDER_PAGE_SIZE = 10
+const MAX_VISIBLE_PROJECTS = 10 // 非搜索时最多显示的项目数
 
 interface SidebarProps {
   sessions: Session[]
@@ -39,6 +44,7 @@ function Sidebar({
   outputtingSessions,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('')
+  const [olderCounts, setOlderCounts] = useState<Record<string, number>>({})
   const { profileById } = useAgentProfiles()
 
   const toggleProject = (projectPath: string) => {
@@ -79,8 +85,6 @@ function Sidebar({
     return map
   }, [filteredSessions])
 
-  // 列表以最近打开的项目为主（最近的在前）；
-  // 有会话但不在最近列表里的项目按活跃度追加在末尾（兜底）
   const projectGroups = useMemo<ProjectGroup[]>(() => {
     const groups: ProjectGroup[] = []
     const seen = new Set<string>()
@@ -113,16 +117,15 @@ function Sidebar({
     return [...groups, ...rest]
   }, [recentProjects, sessionsByProject])
 
-  // 搜索时只展示有匹配会话的项目
   const visibleGroups = searchQuery
     ? projectGroups.filter((g) => g.sessions.length > 0)
-    : projectGroups
+    : projectGroups.slice(0, MAX_VISIBLE_PROJECTS)
 
   const getAgentIcon = (agent: string, isRunning: boolean, isOutputting: boolean) => {
     if (!isRunning) {
       return <span className="agent-color-dot idle" />
     }
-    const color = profileById(agent)?.icon_color || '#71717a'
+    const color = profileById(agent)?.icon_color || '#71717A'
     return (
       <span
         className={`agent-color-dot running${isOutputting ? ' outputting' : ''}`}
@@ -144,6 +147,11 @@ function Sidebar({
     return '刚刚'
   }
 
+  const isRecent = (session: Session) => {
+    if (!session.updated_at) return true
+    return Date.now() - new Date(session.updated_at).getTime() < RECENT_THRESHOLD_MS
+  }
+
   const getProjectName = (path: string) => {
     if (path === '未分类') return path
     return path.split('\\').pop() || path.split('/').pop() || path
@@ -151,29 +159,34 @@ function Sidebar({
 
   return (
     <div className="sidebar">
-      <div className="sidebar-header">
-        <div className="sidebar-title">
-          <h2>Agent Hub</h2>
-        </div>
-
+      {/* 搜索框 */}
+      <div className="sidebar-search">
+        <SearchIcon size={14} className="sidebar-search-icon" />
         <input
           type="text"
-          className="search-input"
+          className="sidebar-search-input"
           placeholder="搜索会话..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
-
-        {onOpenProjectFolder && (
-          <button className="open-project-btn" onClick={onOpenProjectFolder}>
-            📂 打开项目...
-          </button>
-        )}
       </div>
 
-      <div className="project-list">
+      {/* 打开项目按钮 */}
+      {onOpenProjectFolder && (
+        <button className="sidebar-open-btn" onClick={onOpenProjectFolder}>
+          <FolderIcon size={14} className="sidebar-open-btn-icon" />
+          <span>打开项目...</span>
+        </button>
+      )}
+
+      {/* 最近项目分组标题 */}
+      <div className="sidebar-section-header">最近项目</div>
+      <div className="sidebar-divider" />
+
+      {/* 项目列表 */}
+      <div className="sidebar-list">
         {visibleGroups.length === 0 && (
-          <div className="project-list-empty">
+          <div className="sidebar-list-empty">
             {searchQuery ? '没有匹配的会话' : '还没有项目，点击「打开项目」开始'}
           </div>
         )}
@@ -190,14 +203,16 @@ function Sidebar({
                   toggleProject(group.path)
                 }}
               >
-                <span className="project-icon">{isExpanded ? '📂' : '📁'}</span>
-                <span className="project-name" title={group.path}>{getProjectName(group.path)}</span>
+                <FolderIcon size={14} className="project-item-icon" filled={isSelected} style={{ color: isSelected ? '#FAFAFA' : '#A1A1AA' }} />
+                <span className="project-item-name" title={group.path}>
+                  {getProjectName(group.path)}
+                </span>
                 {group.sessions.length > 0 && (
-                  <span className="session-count">{group.sessions.length}</span>
+                  <span className="project-item-badge">{group.sessions.length}</span>
                 )}
                 {recentProjects.includes(group.path) && (
-                  <span
-                    className="remove-btn"
+                  <button
+                    className="project-item-remove"
                     title="从最近列表移除"
                     onClick={(e) => {
                       e.stopPropagation()
@@ -205,35 +220,72 @@ function Sidebar({
                     }}
                   >
                     ✕
-                  </span>
+                  </button>
                 )}
               </div>
 
               {isExpanded && (
                 <div className="session-list">
                   <div
-                    className="session-item new-shell"
+                    className="session-item session-item-new"
                     onClick={(e) => {
                       e.stopPropagation()
                       onOpenShell(group.path)
                     }}
                   >
-                    <span className="session-icon">➕</span>
-                    <span className="session-title">新建空终端</span>
+                    <PlusIcon size={12} className="session-item-icon" />
+                    <span className="session-item-title">新建空终端</span>
                   </div>
-                  {group.sessions.map((session) => (
-                    <div
-                      key={session.session_id}
-                      className="session-item"
-                      onClick={() => onOpenSession(session)}
-                    >
-                      <span className="session-icon">{getAgentIcon(session.agent, runningSessions.has(session.session_id), outputtingSessions.has(session.session_id))}</span>
-                      <span className="session-title">
-                        {session.title || session.session_id.slice(0, 20)}
-                      </span>
-                      <span className="session-time">{formatTime(session.updated_at)}</span>
-                    </div>
-                  ))}
+                  {(() => {
+                    const isSearching = !!searchQuery
+                    const recent = isSearching
+                      ? group.sessions
+                      : group.sessions.filter((s) => isRecent(s))
+                    const older = isSearching
+                      ? []
+                      : group.sessions.filter((s) => !isRecent(s))
+                    const loaded = olderCounts[group.path] || 0
+                    const visibleOlder = older.slice(0, loaded)
+                    const remaining = older.length - loaded
+
+                    const renderSession = (session: Session) => (
+                      <div
+                        key={session.session_id}
+                        className="session-item"
+                        onClick={() => onOpenSession(session)}
+                      >
+                        <span className="session-item-icon">
+                          {getAgentIcon(session.agent, runningSessions.has(session.session_id), outputtingSessions.has(session.session_id))}
+                        </span>
+                        <span className="session-item-title">
+                          {session.title || session.session_id.slice(0, 20)}
+                        </span>
+                        <span className="session-item-time">{formatTime(session.updated_at)}</span>
+                      </div>
+                    )
+
+                    return (
+                      <>
+                        {recent.map(renderSession)}
+                        {visibleOlder.map(renderSession)}
+                        {!isSearching && remaining > 0 && (
+                          <div
+                            className="session-item session-item-more"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setOlderCounts((prev) => ({
+                                ...prev,
+                                [group.path]: (prev[group.path] || 0) + OLDER_PAGE_SIZE,
+                              }))
+                            }}
+                          >
+                            <span className="session-item-icon">···</span>
+                            <span className="session-item-title">显示更多（剩余 {remaining} 条）</span>
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
               )}
             </div>
