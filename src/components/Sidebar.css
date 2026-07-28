@@ -47,6 +47,49 @@
   color: #71717a;
 }
 
+.open-project-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background-color: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  color: #d4d4d8;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.open-project-btn:hover {
+  border-color: #2563eb;
+  background-color: #303036;
+}
+
+.project-list-empty {
+  padding: 24px 16px;
+  font-size: 12px;
+  color: #71717a;
+  text-align: center;
+}
+
+.remove-btn {
+  font-size: 11px;
+  color: #71717a;
+  margin-left: 8px;
+  padding: 0 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.project-item:hover .remove-btn {
+  opacity: 1;
+}
+
+.remove-btn:hover {
+  color: #f87171;
+}
+
 .project-list {
   flex: 1;
   overflow-y: auto;
@@ -147,4 +190,47 @@
   color: #52525b;
   margin-left: 8px;
   white-space: nowrap;
+}
+
+/* Agent 会话状态圆点 */
+.agent-color-dot {
+  display: inline-block;
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* 停止：透明占位，保持标题对齐 */
+.agent-color-dot.idle {
+  background-color: transparent;
+}
+
+/* 运行中 + 空闲：常亮 */
+.agent-color-dot.running {
+  opacity: 1;
+}
+
+/* 运行中 + 输出中：快闪 */
+.agent-color-dot.running.outputting {
+  animation: agent-blink 0.5s ease-in-out infinite;
+}
+
+@keyframes agent-blink {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-color-dot.running.outputting {
+    animation: none;
+    opacity: 1;
+  }
 }

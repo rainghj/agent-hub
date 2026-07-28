@@ -43,6 +43,7 @@ export interface GlobalWorkspaceState {
   window_width: number | null
   window_height: number | null
   window_maximized: boolean | null
+  recent_projects: string[]
 }
 
 export interface WorkspaceStateAPI {
@@ -67,6 +68,7 @@ const defaultGlobalState = (): GlobalWorkspaceState => ({
   window_width: null,
   window_height: null,
   window_maximized: null,
+  recent_projects: [],
 })
 
 export function useWorkspaceState(): WorkspaceStateAPI {

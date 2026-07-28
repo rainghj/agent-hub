@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import { useWorkspaceState, SerializedTab, ProjectWorkspaceState, GlobalWorkspaceState } from './hooks/useWorkspaceState'
 import TerminalTabs from './components/TerminalTabs'
@@ -190,12 +190,32 @@ function buildProjectState(
   }
 }
 
+const MAX_RECENT_PROJECTS = 20
+
+// 从会话列表派生最近项目（按最新会话时间排序），用于旧数据迁移和浏览器开发模式
+function deriveRecentsFromSessions(list: Session[]): string[] {
+  const latest = new Map<string, number>()
+  for (const s of list) {
+    if (!s.project) continue
+    const t = new Date(s.updated_at || 0).getTime()
+    latest.set(s.project, Math.max(latest.get(s.project) ?? 0, t))
+  }
+  return [...latest.entries()].sort((a, b) => b[1] - a[1]).map(([p]) => p)
+}
+
 function App() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
+  const [recentProjects, setRecentProjects] = useState<string[]>([])
   const [tabs, setTabs] = useState<TerminalTab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  // 正在运行的会话（有活跃 PTY 的 session），用于左侧动态图标
+  const [runningSessions, setRunningSessions] = useState<Set<string>>(new Set())
+  // 正在输出的会话（PTY 有数据流），用于区分"空闲常亮"和"输出中快闪"
+  const [outputtingSessions, setOutputtingSessions] = useState<Set<string>>(new Set())
+  // 每个 session 的输出停顿定时器（debounce 判断 outputting → idle）
+  const outputTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   // 记录文件标签页的当前编辑内容，用于关闭时保存
   const [fileContents, setFileContents] = useState<Record<string, string>>({})
   // 关闭未保存文件时的确认弹窗状态
@@ -241,8 +261,17 @@ function App() {
       }
       setSessions(sessionsData)
 
+      if (!isTauri) {
+        setRecentProjects(deriveRecentsFromSessions(sessionsData))
+      }
+
       if (isTauri) {
         const global = await loadGlobalState()
+        const recents =
+          global.recent_projects && global.recent_projects.length > 0
+            ? global.recent_projects
+            : deriveRecentsFromSessions(sessionsData)
+        setRecentProjects(recents)
         const lastProject = global.last_project_path
         if (lastProject && sessionsData.some((s) => s.project === lastProject)) {
           setSelectedProject(lastProject)
@@ -260,6 +289,31 @@ function App() {
     }
   }
 
+  // 持久化最近项目列表到全局状态
+  const persistRecents = useCallback(async (recents: string[]) => {
+    setRecentProjects(recents)
+    if (!isTauri) return
+    try {
+      const current = await loadGlobalState()
+      await saveGlobalState({ ...current, recent_projects: recents })
+    } catch (err) {
+      console.error('Failed to save recent projects:', err)
+    }
+  }, [loadGlobalState, saveGlobalState])
+
+  // 把项目置顶到最近列表（去重、上限 MAX_RECENT_PROJECTS）
+  const pushRecentProject = useCallback((path: string) => {
+    setRecentProjects((prev) => {
+      const next = [path, ...prev.filter((p) => p !== path)].slice(0, MAX_RECENT_PROJECTS)
+      if (isTauri) {
+        loadGlobalState()
+          .then((current) => saveGlobalState({ ...current, recent_projects: next }))
+          .catch((err) => console.error('Failed to save recent projects:', err))
+      }
+      return next
+    })
+  }, [loadGlobalState, saveGlobalState])
+
   const selectProject = useCallback(async (path: string | null) => {
     const previousProject = selectedProject
     if (previousProject && isTauri) {
@@ -274,6 +328,9 @@ function App() {
     }
 
     setSelectedProject(path)
+    if (path) {
+      pushRecentProject(path)
+    }
 
     if (path && isTauri) {
       const state = await loadProjectState(path)
@@ -284,7 +341,30 @@ function App() {
       setTabs([])
       setActiveTabId(null)
     }
-  }, [selectedProject, tabs, activeTabId, expandedDirs, expandedProjects, saveProjectState, loadProjectState])
+  }, [selectedProject, tabs, activeTabId, expandedDirs, expandedProjects, saveProjectState, loadProjectState, pushRecentProject])
+
+  // 从最近列表移除项目；若移除的是当前选中项目则取消选中
+  const removeRecentProject = useCallback(async (path: string) => {
+    const next = recentProjects.filter((p) => p !== path)
+    await persistRecents(next)
+    if (selectedProject === path) {
+      selectProject(null)
+    }
+  }, [recentProjects, selectedProject, persistRecents, selectProject])
+
+  // 弹出系统文件夹选择框，打开一个新项目
+  const openProjectFolder = useCallback(async () => {
+    if (!isTauri) return
+    try {
+      const { open } = await import('@tauri-apps/api/dialog')
+      const selected = await open({ directory: true, multiple: false })
+      if (typeof selected === 'string') {
+        await selectProject(selected)
+      }
+    } catch (err) {
+      console.error('Failed to open folder dialog:', err)
+    }
+  }, [selectProject])
 
   useEffect(() => {
     if (!selectedProject || !isTauri) return
@@ -355,6 +435,100 @@ function App() {
 
     restoreWindow()
   }, [loadGlobalState])
+
+  // 监听终端进程退出事件，移除对应会话的"运行中"状态
+  useEffect(() => {
+    if (!isTauri) return
+    let unlisten: (() => void) | null = null
+    const setup = async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event')
+        unlisten = await listen<{
+          terminal_id: string
+          agent?: string
+          session_id?: string
+          status: string
+        }>('terminal-status', (event) => {
+          const { session_id, status } = event.payload
+          if (status === 'exited' && session_id) {
+            setRunningSessions((prev) => {
+              if (!prev.has(session_id)) return prev
+              const next = new Set(prev)
+              next.delete(session_id)
+              return next
+            })
+            setOutputtingSessions((prev) => {
+              if (!prev.has(session_id)) return prev
+              const next = new Set(prev)
+              next.delete(session_id)
+              return next
+            })
+            const t = outputTimers.current.get(session_id)
+            if (t) {
+              clearTimeout(t)
+              outputTimers.current.delete(session_id)
+            }
+          }
+        })
+      } catch (err) {
+        console.error('Failed to listen terminal-status:', err)
+      }
+    }
+    setup()
+    return () => {
+      unlisten?.()
+    }
+  }, [])
+
+  // 监听终端输出，debounce 判断会话是否"正在输出"（区分空闲常亮 / 输出中快闪）
+  useEffect(() => {
+    if (!isTauri) return
+    let unlisten: (() => void) | null = null
+    const IDLE_TIMEOUT = 800
+    const setup = async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event')
+        unlisten = await listen<{
+          terminal_id: string
+          agent?: string
+          session_id?: string
+          data: string
+        }>('terminal-output', (event) => {
+          const { session_id } = event.payload
+          if (!session_id) return // shell 类型无 session_id，忽略
+          // 标记为输出中（状态未变时不触发 re-render）
+          setOutputtingSessions((prev) => {
+            if (prev.has(session_id)) return prev
+            const next = new Set(prev)
+            next.add(session_id)
+            return next
+          })
+          // 重置空闲定时器：超时无新输出则切回空闲
+          const timers = outputTimers.current
+          const existing = timers.get(session_id)
+          if (existing) clearTimeout(existing)
+          timers.set(
+            session_id,
+            setTimeout(() => {
+              setOutputtingSessions((prev) => {
+                if (!prev.has(session_id)) return prev
+                const next = new Set(prev)
+                next.delete(session_id)
+                return next
+              })
+              timers.delete(session_id)
+            }, IDLE_TIMEOUT)
+          )
+        })
+      } catch (err) {
+        console.error('Failed to listen terminal-output:', err)
+      }
+    }
+    setup()
+    return () => {
+      unlisten?.()
+    }
+  }, [])
 
   // 关闭前保存状态：Tauri 下用 onCloseRequested，非 Tauri 用 beforeunload 兜底
   useEffect(() => {
@@ -448,6 +622,12 @@ function App() {
     }
     setTabs((prev) => [...prev, newTab])
     setActiveTabId(id)
+    setRunningSessions((prev) => {
+      if (prev.has(session.session_id)) return prev
+      const next = new Set(prev)
+      next.add(session.session_id)
+      return next
+    })
   }, [tabs, selectedProject])
 
   const openFileTab = useCallback((filePath: string) => {
@@ -473,6 +653,26 @@ function App() {
   }, [tabs, selectedProject])
 
   const doCloseTab = useCallback((tabId: string) => {
+    const tab = tabs.find((t) => t.id === tabId)
+    if (tab?.type === 'session' && tab.sessionId) {
+      setRunningSessions((prev) => {
+        if (!prev.has(tab.sessionId!)) return prev
+        const next = new Set(prev)
+        next.delete(tab.sessionId!)
+        return next
+      })
+      setOutputtingSessions((prev) => {
+        if (!prev.has(tab.sessionId!)) return prev
+        const next = new Set(prev)
+        next.delete(tab.sessionId!)
+        return next
+      })
+      const t = outputTimers.current.get(tab.sessionId)
+      if (t) {
+        clearTimeout(t)
+        outputTimers.current.delete(tab.sessionId)
+      }
+    }
     setTabs((prev) => {
       const index = prev.findIndex((t) => t.id === tabId)
       const next = prev.filter((t) => t.id !== tabId)
@@ -490,7 +690,7 @@ function App() {
       delete next[tabId]
       return next
     })
-  }, [activeTabId])
+  }, [activeTabId, tabs])
 
   const closeTab = useCallback((tabId: string) => {
     const tab = tabs.find((t) => t.id === tabId)
@@ -570,6 +770,11 @@ function App() {
         onOpenSession={openSessionTab}
         expandedProjects={expandedProjects}
         onExpandedProjectsChange={setExpandedProjects}
+        recentProjects={recentProjects}
+        onOpenProjectFolder={isTauri ? openProjectFolder : undefined}
+        onRemoveRecentProject={removeRecentProject}
+        runningSessions={runningSessions}
+        outputtingSessions={outputtingSessions}
       />
       <ErrorBoundary fallback={<div className="error-boundary-fallback"><h3>终端面板加载失败</h3><p>请刷新页面重试</p></div>}>
         <TerminalTabs

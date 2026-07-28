@@ -194,7 +194,13 @@ fn kill_process_tree(pid: u32) {
     #[cfg(not(any(unix, windows)))]
     {}
 }
-fn spawn_reader_thread(mut reader: Box<dyn Read + Send>, terminal_id: String, window: Window) {
+fn spawn_reader_thread(
+    mut reader: Box<dyn Read + Send>,
+    terminal_id: String,
+    agent: Option<String>,
+    session_id: Option<String>,
+    window: Window,
+) {
     std::thread::spawn(move || {
         use std::time::{Duration, Instant};
 
@@ -212,11 +218,22 @@ fn spawn_reader_thread(mut reader: Box<dyn Read + Send>, terminal_id: String, wi
                         let _ = window.emit(
                             "terminal-output",
                             serde_json::json!({
-                                "terminal_id": terminal_id,
+                                "terminal_id": &terminal_id,
+                                "agent": &agent,
+                                "session_id": &session_id,
                                 "data": pending,
                             }),
                         );
                     }
+                    let _ = window.emit(
+                        "terminal-status",
+                        serde_json::json!({
+                            "terminal_id": &terminal_id,
+                            "agent": &agent,
+                            "session_id": &session_id,
+                            "status": "exited",
+                        }),
+                    );
                     break;
                 }
                 Ok(n) => {
@@ -228,7 +245,9 @@ fn spawn_reader_thread(mut reader: Box<dyn Read + Send>, terminal_id: String, wi
                         let _ = window.emit(
                             "terminal-output",
                             serde_json::json!({
-                                "terminal_id": terminal_id,
+                                "terminal_id": &terminal_id,
+                                "agent": &agent,
+                                "session_id": &session_id,
                                 "data": pending,
                             }),
                         );
@@ -241,11 +260,22 @@ fn spawn_reader_thread(mut reader: Box<dyn Read + Send>, terminal_id: String, wi
                         let _ = window.emit(
                             "terminal-output",
                             serde_json::json!({
-                                "terminal_id": terminal_id,
+                                "terminal_id": &terminal_id,
+                                "agent": &agent,
+                                "session_id": &session_id,
                                 "data": pending,
                             }),
                         );
                     }
+                    let _ = window.emit(
+                        "terminal-status",
+                        serde_json::json!({
+                            "terminal_id": &terminal_id,
+                            "agent": &agent,
+                            "session_id": &session_id,
+                            "status": "exited",
+                        }),
+                    );
                     break;
                 }
             }
@@ -393,7 +423,13 @@ pub fn spawn_terminal(
 
     let (_master, writer, reader, child) = create_pty(cmd, cols, rows)?;
 
-    spawn_reader_thread(reader, terminal_id.clone(), window);
+    spawn_reader_thread(
+        reader,
+        terminal_id.clone(),
+        Some(agent.clone()),
+        Some(session_id.clone()),
+        window,
+    );
 
     let session = TerminalSession {
         id: terminal_id.clone(),
@@ -428,7 +464,7 @@ pub fn spawn_shell(
 
     let (_master, writer, reader, child) = create_pty(cmd, cols, rows)?;
 
-    spawn_reader_thread(reader, shell_id.clone(), window);
+    spawn_reader_thread(reader, shell_id.clone(), None, None, window);
 
     let session = TerminalSession {
         id: shell_id.clone(),

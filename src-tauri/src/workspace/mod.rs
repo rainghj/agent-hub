@@ -53,6 +53,8 @@ pub struct GlobalWorkspaceState {
     pub window_width: Option<u32>,
     pub window_height: Option<u32>,
     pub window_maximized: Option<bool>,
+    #[serde(default)]
+    pub recent_projects: Vec<String>,
 }
 
 pub struct WorkspaceManager {

@@ -42,6 +42,10 @@
         "all": true,
         "show": true,
         "hide": true
+      },
+      "dialog": {
+        "all": false,
+        "open": true
       }
     }
   }
